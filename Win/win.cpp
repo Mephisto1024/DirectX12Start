@@ -58,5 +58,27 @@ bool InitWindow(HINSTANCE instanceHandle, int show)
 int Run()
 {
 	MSG msg = { 0 };
-
+	BOOL bRet = 1;
+	while (bRet = GetMessage(&msg, 0, 0, 0) != 0)
+	{
+		if (bRet == -1)
+		{
+			MessageBox(0, L"GetMessage Failed", L"Error", MB_OK);
+			break;
+		}
+		else
+		{
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
+	}
+	return (int)msg.wParam;
+}
+LRESULT CALLBACK WindowProcess(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+	switch (msg)
+	{
+	case WM_LBUTTONDOWN:
+	}
+	return LRESULT();
 }
