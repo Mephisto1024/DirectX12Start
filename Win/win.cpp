@@ -1,25 +1,27 @@
-#include<windows.h>
+ï»¿#include<windows.h>
+
+
+
 HWND MainWindow = 0;
-/* ³õÊ¼»¯Ê§°ÜÔò·µ»Øfalse */
+/* åˆå§‹åŒ–å¤±è´¥åˆ™è¿”å›false */
 bool InitWindow(HINSTANCE instanceHandle, int show);
 int Run();
 
 LRESULT CALLBACK //
 WindowProcess(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-int WINAPI    //²ÎÊı´ÓÓÒÏò×óÑ¹Èë¶ÑÕ»
-WinMain(HINSTANCE hInstance, HINSTANCE hPreInstance, PSTR pCmdLine, int nCmdShow)
+int APIENTRY    //å‚æ•°ä»å³å‘å·¦å‹å…¥å †æ ˆ
+WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPSTR lpCmdLine, _In_ int nShowCmd)
 {
-	if (!InitWindow(hInstance, nCmdShow)) return 0;
+	if (!InitWindow(hInstance, nShowCmd)) return 0;
 	return Run();
 }
-
 bool InitWindow(HINSTANCE instanceHandle, int show)
 {
-	/*³õÊ¼»¯´°¿ÚµÚÒ»²½£º ÌîĞ´WNDCLASS½á¹¹ÌåÃèÊö´°¿ÚµÄ»ù±¾ÊôĞÔ*/
+	/*åˆå§‹åŒ–çª—å£ç¬¬ä¸€æ­¥ï¼š å¡«å†™WNDCLASSç»“æ„ä½“æè¿°çª—å£çš„åŸºæœ¬å±æ€§*/
 	WNDCLASS wndclass;
 	wndclass.style = CS_HREDRAW | CS_VREDRAW;
-	wndclass.lpfnWndProc = WindowProcess;    //Ö¸Ïò´°¿Ú¹ı³Ìº¯ÊıµÄÖ¸Õë
+	wndclass.lpfnWndProc = WindowProcess;    //æŒ‡å‘çª—å£è¿‡ç¨‹å‡½æ•°çš„æŒ‡é’ˆ
 	wndclass.cbClsExtra = 0;
 	wndclass.cbWndExtra = 0;
 	wndclass.hInstance = instanceHandle;
@@ -43,7 +45,7 @@ bool InitWindow(HINSTANCE instanceHandle, int show)
 		CW_USEDEFAULT,
 		CW_USEDEFAULT,
 		CW_USEDEFAULT,
-		0,0,instanceHandle,0,);
+		0, 0, instanceHandle, 0);
 
 	if (MainWindow == 0)
 	{
@@ -59,7 +61,7 @@ int Run()
 {
 	MSG msg = { 0 };
 	BOOL bRet = 1;
-	while (bRet = GetMessage(&msg, 0, 0, 0) != 0)
+	while ((bRet = GetMessage(&msg, 0, 0, 0)) != 0)
 	{
 		if (bRet == -1)
 		{
@@ -79,6 +81,15 @@ LRESULT CALLBACK WindowProcess(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 	switch (msg)
 	{
 	case WM_LBUTTONDOWN:
+		MessageBox(0, L"HelloWorld", L"Hello", MB_OK);
+		return 0;
+	case WM_KEYDOWN:
+		if (wParam == VK_ESCAPE)
+			DestroyWindow(MainWindow);
+		return 0;
+	case WM_DESTROY:
+		PostQuitMessage(0);
+		return 0;
 	}
-	return LRESULT();
+	return DefWindowProc(hwnd, msg, wParam, lParam);
 }
