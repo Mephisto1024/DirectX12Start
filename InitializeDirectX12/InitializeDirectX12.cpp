@@ -1,10 +1,16 @@
 ﻿#include<windows.h>
 #include <d3d12.h>	/*包含函数：
 D3D12CreateDevice()
-
+D3D12GetDebugInterface()
 
 */
 #include <wrl.h>	/*windows Runtime C++ Template Library*/
+
+#include<dxgi1_6.h>/*包含：
+IDXGIFactory7
+
+*/
+
 
 //#if defined(_DEBUG)
 //#include <dxgidebug.h>
@@ -12,7 +18,9 @@ D3D12CreateDevice()
 
 using namespace Microsoft::WRL;		//ComPtr,
 
-HWND MainWindow = 0;
+#pragma comment(lib, "d3d12.lib")    //D3D12GetDebugInterface()
+#pragma comment(lib, "dxgi.lib")    //CreateDXGIFactory()
+
 bool InitWindow(HINSTANCE instanceHandle, int show);
 bool InitDirect3D();
 bool Initialize(HINSTANCE instanceHandle, int show);
@@ -21,6 +29,8 @@ int Run();
 LRESULT CALLBACK //
 WindowProcess(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
+HWND MainWindow = 0;
+ComPtr<IDXGIFactory7> dxgiFactory;
 int WINAPI    //参数从右向左压入堆栈
 WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPSTR lpCmdLine, _In_ int nShowCmd)
 {
@@ -92,6 +102,11 @@ _DEBUG 宏通常在调试配置中定义，用于区分调试和发布版本。*
 	// 启用调试层后，DirectX 12 会提供更多的运行时调试信息，有助于开发和调试应用程序
 
 #endif
+
+	/*第一步：创建设备*/
+	CreateDXGIFactory(IID_PPV_ARGS(&dxgiFactory));
+
+
 	return true;
 }
 bool Initialize(HINSTANCE instanceHandle, int show)
