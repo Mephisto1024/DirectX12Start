@@ -28,7 +28,8 @@ bool InitWindow(HINSTANCE instanceHandle, int show);
 bool InitDirect3D();
 bool Initialize(HINSTANCE instanceHandle, int show);
 int Run();
-
+void CreateCommandObjects();
+void CreateSwapChain();
 LRESULT CALLBACK //__stdcall
 WindowProcess(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -36,8 +37,11 @@ HWND MainWindow = 0;
 D3D_FEATURE_LEVEL d3dFeatureLevel =  D3D_FEATURE_LEVEL_12_2;
 ComPtr<IDXGIFactory7> dxgiFactory;
 ComPtr<ID3D12Device9> d3dDevice;
-ComPtr<ID3D12Fence>	fence;
-
+ComPtr<ID3D12Fence1> fence;
+ComPtr<ID3D12CommandAllocator> commandAllocator;
+ComPtr<ID3D12CommandQueue> commandQueue;
+ComPtr<ID3D12GraphicsCommandList> commandList;
+ComPtr<IDXGISwapChain4> swapChain;
 int WINAPI    //__stdcall,参数从右向左压入堆栈
 WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPSTR lpCmdLine, _In_ int nShowCmd)
 {
@@ -57,7 +61,7 @@ WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPSTR l
 bool InitWindow(HINSTANCE instanceHandle, int show)
 {
 	/*初始化窗口第一步： 填写WNDCLASS结构体描述窗口的基本属性*/
-	WNDCLASS wc;
+	WNDCLASS wc = {};
 	wc.style = CS_HREDRAW | CS_VREDRAW;
 	wc.lpfnWndProc = WindowProcess;    //指向窗口过程函数的指针
 	wc.cbClsExtra = 0;
@@ -142,8 +146,14 @@ bool InitDirect3D()
 	ThrowIfFailed(d3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE,IID_PPV_ARGS(&fence)));
 	/*第三步：检测MSAA支持*/
 	/*第四步：创建命令队列，命令列表分配器，命令列表*/
+	CreateCommandObjects();
+	/*第五步：创建交换链*/
+	CreateSwapChain();
+	/*第六步：创建描述符堆*/
 
-
+	/*初始化之外*/
+	/*第七步：创建渲染目标视图*/
+	/*第八步：创建渲染目标视图*/
 	return true;
 }
 bool Initialize(HINSTANCE instanceHandle, int show)
@@ -174,6 +184,64 @@ int Run()
 		}
 	}
 	return (int)msg.wParam;
+}
+void CreateCommandObjects()
+{
+	D3D12_COMMAND_QUEUE_DESC queueDesc = {};
+	queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+	queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+	ThrowIfFailed(d3dDevice->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&commandQueue)));
+
+	ThrowIfFailed(d3dDevice->CreateCommandAllocator(
+		D3D12_COMMAND_LIST_TYPE_DIRECT,
+		IID_PPV_ARGS(commandAllocator.GetAddressOf())));
+
+	ThrowIfFailed(d3dDevice->CreateCommandList(
+		0,
+		D3D12_COMMAND_LIST_TYPE_DIRECT,
+		commandAllocator.Get(),    // 关联命令分配器
+		nullptr,                   // 将流水线状态对象设置为空，因为我们不会发起任何绘制命令
+		IID_PPV_ARGS(commandList.GetAddressOf())));
+
+	/*
+	* 关闭命令列表，
+	因为在第一次引用命令队列时，我们要对它进行重置，
+	而在调用重置方法之前，需要将他关闭
+	*/
+	commandList->Close();
+}
+void CreateSwapChain()
+{
+	// Release the previous swapchain we will be recreating.
+	swapChain.Reset();
+
+	DXGI_SWAP_CHAIN_DESC sd = {};
+	sd.BufferDesc.Width = width;
+	sd.BufferDesc.Height = height;
+	sd.BufferDesc.RefreshRate.Numerator = 60;
+	sd.BufferDesc.RefreshRate.Denominator = 1;
+	sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	sd.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
+	sd.BufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
+
+	//sd.SampleDesc.Count = m4xMsaaState ? 4 : 1;
+	//sd.SampleDesc.Quality = m4xMsaaState ? (m4xMsaaQuality - 1) : 0;
+
+	sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+	sd.BufferCount = SwapChainBufferCount;
+	sd.OutputWindow = MainWindow;
+	sd.Windowed = true;
+	sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+	sd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+
+	ComPtr<IDXGISwapChain> swapChain_temp;
+	// Note: Swap chain uses queue to perform flush.
+	ThrowIfFailed(dxgiFactory->CreateSwapChain(
+		commandQueue.Get(),
+		&sd,
+		swapChain_temp.GetAddressOf()));
+	ThrowIfFailed(swapChain_temp.As(&swapChain));
+
 }
 LRESULT CALLBACK WindowProcess(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
