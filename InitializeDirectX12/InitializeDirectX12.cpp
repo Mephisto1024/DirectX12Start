@@ -106,6 +106,11 @@ _DEBUG 宏通常在调试配置中定义，用于区分调试和发布版本。*
 	/*第一步：创建设备*/
 	CreateDXGIFactory(IID_PPV_ARGS(&dxgiFactory));
 
+	HRESULT hardware = D3D12CreateDevice(
+		nullptr,
+		D3D_FEATURE_LEVEL_12_2,
+
+	)
 
 	return true;
 }
