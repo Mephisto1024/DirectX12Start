@@ -9,8 +9,6 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Win", "..\Win\Win.vcxproj",
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "InitializeDirectX12", "..\InitializeDirectX12\InitializeDirectX12.vcxproj", "{718FBCBB-37FF-4254-9B1B-4D42E1325E0B}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Init Direct3D", "..\..\..\source\repos\DiretxRef\第4章\Init Direct3D\Init Direct3D.vcxproj", "{C4680F18-E037-4881-A760-CF9AC4C668C5}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -43,14 +41,6 @@ Global
 		{718FBCBB-37FF-4254-9B1B-4D42E1325E0B}.Release|x64.Build.0 = Release|x64
 		{718FBCBB-37FF-4254-9B1B-4D42E1325E0B}.Release|x86.ActiveCfg = Release|Win32
 		{718FBCBB-37FF-4254-9B1B-4D42E1325E0B}.Release|x86.Build.0 = Release|Win32
-		{C4680F18-E037-4881-A760-CF9AC4C668C5}.Debug|x64.ActiveCfg = Debug|x64
-		{C4680F18-E037-4881-A760-CF9AC4C668C5}.Debug|x64.Build.0 = Debug|x64
-		{C4680F18-E037-4881-A760-CF9AC4C668C5}.Debug|x86.ActiveCfg = Debug|Win32
-		{C4680F18-E037-4881-A760-CF9AC4C668C5}.Debug|x86.Build.0 = Debug|Win32
-		{C4680F18-E037-4881-A760-CF9AC4C668C5}.Release|x64.ActiveCfg = Release|x64
-		{C4680F18-E037-4881-A760-CF9AC4C668C5}.Release|x64.Build.0 = Release|x64
-		{C4680F18-E037-4881-A760-CF9AC4C668C5}.Release|x86.ActiveCfg = Release|Win32
-		{C4680F18-E037-4881-A760-CF9AC4C668C5}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

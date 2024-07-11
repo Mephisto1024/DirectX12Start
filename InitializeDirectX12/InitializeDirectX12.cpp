@@ -1,8 +1,11 @@
-﻿#include<windows.h>
+﻿#define WIN32_LEAN_AND_MEAN
+#include<windows.h>
+#include"InitializeDirectX12.h"
 #include <d3d12.h>	/*包含函数：
 D3D12CreateDevice()
 D3D12GetDebugInterface()
-
+类：
+ID3D12Device4
 */
 #include <wrl.h>	/*windows Runtime C++ Template Library*/
 
@@ -11,10 +14,10 @@ IDXGIFactory7
 
 */
 
+#if defined(_DEBUG)
+#include <dxgidebug.h>
+#endif
 
-//#if defined(_DEBUG)
-//#include <dxgidebug.h>
-//#endif
 
 using namespace Microsoft::WRL;		//ComPtr,
 
@@ -26,17 +29,29 @@ bool InitDirect3D();
 bool Initialize(HINSTANCE instanceHandle, int show);
 int Run();
 
-LRESULT CALLBACK //
+LRESULT CALLBACK //__stdcall
 WindowProcess(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 HWND MainWindow = 0;
+D3D_FEATURE_LEVEL d3dFeatureLevel =  D3D_FEATURE_LEVEL_12_2;
 ComPtr<IDXGIFactory7> dxgiFactory;
-int WINAPI    //参数从右向左压入堆栈
+ComPtr<ID3D12Device9> d3dDevice;
+ComPtr<ID3D12Fence>	fence;
+
+int WINAPI    //__stdcall,参数从右向左压入堆栈
 WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPSTR lpCmdLine, _In_ int nShowCmd)
 {
-	if (!Initialize(hInstance, nShowCmd)) return 0;
-	return Run();
-
+	try
+	{
+		if (!Initialize(hInstance, nShowCmd)) return 0;
+		return Run();
+	}
+	catch(DxException& e)
+	{
+		MessageBox(nullptr, (LPCWSTR)e.Error(), L"HR Failed", MB_OK);
+		return 0;
+	}
+	
 
 }
 bool InitWindow(HINSTANCE instanceHandle, int show)
@@ -84,8 +99,7 @@ bool InitDirect3D()
 {
 #if defined(_DEBUG)    /*
 	只有在调试模式下（即 _DEBUG 宏被定义时）才会执行其中的代码。
-	在发布模式下（即没有定义 _DEBUG 宏时），这些代码将被编译器忽略。
-_DEBUG 宏通常在调试配置中定义，用于区分调试和发布版本。*/
+	*/
 	ComPtr<ID3D12Debug> debugController;
 	if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController))))
 	{
@@ -104,13 +118,31 @@ _DEBUG 宏通常在调试配置中定义，用于区分调试和发布版本。*
 #endif
 
 	/*第一步：创建设备*/
-	CreateDXGIFactory(IID_PPV_ARGS(&dxgiFactory));
+	CreateDXGIFactory(IID_PPV_ARGS(&dxgiFactory));/*作用： 枚举WARP适配器，创建交换链*/
+	
 
-	HRESULT hardware = D3D12CreateDevice(
+	HRESULT hardwareResult = D3D12CreateDevice(
 		nullptr,
-		D3D_FEATURE_LEVEL_12_2,
+		d3dFeatureLevel,
+		IID_PPV_ARGS(&d3dDevice)
+	);
+	if (FAILED(hardwareResult))
+	{
+		/*如果调用D3D12CreateDevice失败，程序将回退到WARP设备，windows高级光栅化平台*/
+		ComPtr<IDXGIAdapter> warpAdapter;
+		ThrowIfFailed(dxgiFactory->EnumWarpAdapter(IID_PPV_ARGS(&warpAdapter)));
 
-	)
+		ThrowIfFailed(D3D12CreateDevice(
+			warpAdapter.Get(),
+			d3dFeatureLevel,
+			IID_PPV_ARGS(&d3dDevice)
+		));
+	}
+	/*第二步：创建围栏并获取描述符大小*/
+	ThrowIfFailed(d3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE,IID_PPV_ARGS(&fence)));
+	/*第三步：检测MSAA支持*/
+	/*第四步：创建命令队列，命令列表分配器，命令列表*/
+
 
 	return true;
 }
