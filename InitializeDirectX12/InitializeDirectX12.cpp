@@ -28,6 +28,7 @@ bool InitWindow(HINSTANCE instanceHandle, int show);
 bool InitDirect3D();
 bool Initialize(HINSTANCE instanceHandle, int show);
 int Run();
+void Draw();
 void CreateCommandObjects();
 void CreateSwapChain();
 void CreateDescriptorHeaps();
@@ -173,21 +174,25 @@ bool Initialize(HINSTANCE instanceHandle, int show)
 int Run()
 {
 	MSG msg = { 0 };
-	BOOL bRet = 1;
-	while ((bRet = GetMessage(&msg, 0, 0, 0)) != 0)
+	while (msg.message != WM_QUIT)
 	{
-		if (bRet == -1)
-		{
-			MessageBox(0, L"GetMessage Failed", L"Error", MB_OK);
-			break;
-		}
-		else
+		//如果有消息则进行处理
+		if (PeekMessage(&msg, 0, 0, 0, PM_REMOVE))
 		{
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
+		//否则游戏逻辑代码
+		else
+		{
+			Draw();
+		}
 	}
 	return (int)msg.wParam;
+}
+void Draw()
+{
+
 }
 void CreateCommandObjects()
 {
@@ -265,6 +270,21 @@ void CreateDescriptorHeaps()
 	dsvHeapDesc.NodeMask = 0;
 	ThrowIfFailed(d3dDevice->CreateDescriptorHeap(
 		&dsvHeapDesc, IID_PPV_ARGS(dsvHeap.GetAddressOf())));
+	/*创建描述符堆后如何访问其中的描述符？*/
+
+	/*
+	* GetCPUDescriptorHandleForHeapStart函数获得描述符堆中第一个描述符的句柄
+	* 
+	* D3D12_CPU_DESCRIPTOR_HANDLE D3DApp::CurrentBackBufferView()const
+	{
+		return CD3DX12_CPU_DESCRIPTOR_HANDLE(
+			mRtvHeap->GetCPUDescriptorHandleForHeapStart(),
+			mCurrBackBuffer,
+			mRtvDescriptorSize);
+	}
+
+	为了用偏移量找到当前后台缓冲区的RTV描述符，我们必须知道其大小
+	*/
 }
 LRESULT CALLBACK WindowProcess(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
