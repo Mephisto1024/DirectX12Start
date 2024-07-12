@@ -30,6 +30,7 @@ bool Initialize(HINSTANCE instanceHandle, int show);
 int Run();
 void CreateCommandObjects();
 void CreateSwapChain();
+void CreateDescriptorHeaps();
 LRESULT CALLBACK //__stdcall
 WindowProcess(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -42,6 +43,9 @@ ComPtr<ID3D12CommandAllocator> commandAllocator;
 ComPtr<ID3D12CommandQueue> commandQueue;
 ComPtr<ID3D12GraphicsCommandList> commandList;
 ComPtr<IDXGISwapChain4> swapChain;
+ComPtr<ID3D12DescriptorHeap> rtvHeap;
+ComPtr<ID3D12DescriptorHeap> dsvHeap;
+
 int WINAPI    //__stdcall,参数从右向左压入堆栈
 WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPSTR lpCmdLine, _In_ int nShowCmd)
 {
@@ -150,7 +154,7 @@ bool InitDirect3D()
 	/*第五步：创建交换链*/
 	CreateSwapChain();
 	/*第六步：创建描述符堆*/
-
+	CreateDescriptorHeaps();
 	/*初始化之外*/
 	/*第七步：创建渲染目标视图*/
 	/*第八步：创建渲染目标视图*/
@@ -224,8 +228,8 @@ void CreateSwapChain()
 	sd.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
 	sd.BufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
 
-	//sd.SampleDesc.Count = m4xMsaaState ? 4 : 1;
-	//sd.SampleDesc.Quality = m4xMsaaState ? (m4xMsaaQuality - 1) : 0;
+	sd.SampleDesc.Count = msaaState ? 4 : 1;
+	sd.SampleDesc.Quality = msaaState ? (msaaQuality - 1) : 0;
 
 	sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 	sd.BufferCount = SwapChainBufferCount;
@@ -242,6 +246,25 @@ void CreateSwapChain()
 		swapChain_temp.GetAddressOf()));
 	ThrowIfFailed(swapChain_temp.As(&swapChain));
 
+}
+void CreateDescriptorHeaps()
+{
+	D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc;
+	rtvHeapDesc.NumDescriptors = SwapChainBufferCount;
+	rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+	rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	rtvHeapDesc.NodeMask = 0;
+	ThrowIfFailed(d3dDevice->CreateDescriptorHeap(
+		&rtvHeapDesc, IID_PPV_ARGS(rtvHeap.GetAddressOf())));
+
+
+	D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc;
+	dsvHeapDesc.NumDescriptors = 1;
+	dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+	dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	dsvHeapDesc.NodeMask = 0;
+	ThrowIfFailed(d3dDevice->CreateDescriptorHeap(
+		&dsvHeapDesc, IID_PPV_ARGS(dsvHeap.GetAddressOf())));
 }
 LRESULT CALLBACK WindowProcess(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {

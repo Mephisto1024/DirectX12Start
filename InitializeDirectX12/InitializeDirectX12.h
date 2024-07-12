@@ -6,6 +6,10 @@
     if(FAILED(hr__)) { throw DxException(hr__); }                     \
 }
 
+// Set true to use 4X MSAA.   The default is false.
+bool msaaState = false;    // 4X MSAA enabled
+UINT msaaQuality = 0;      // quality level of 4X MSAA
+
 int width = 800;
 int height = 600;
 int SwapChainBufferCount = 2;
