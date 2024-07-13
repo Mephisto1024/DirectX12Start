@@ -12,8 +12,9 @@ UINT msaaQuality = 0;      // quality level of 4X MSAA
 
 int width = 800;
 int height = 600;
-int SwapChainBufferCount = 2;
-
+const int SwapChainBufferCount = 2;
+int currBackBuffer = 0;
+UINT rtvDescriptorSize = 0;
 
 class DxException
 {

@@ -7,7 +7,8 @@ D3D12GetDebugInterface()
 类：
 ID3D12Device4
 */
-#include <wrl.h>	/*windows Runtime C++ Template Library*/
+#include "d3dx12.h"/*包含 创建RT视图所需的句柄 CD3DX12_CPU_DESCRIPTOR_HANDLE */
+#include <wrl.h>	/*windows Runtime C++ Template Library，方便使用ComPtr*/
 
 #include<dxgi1_6.h>/*包含：
 IDXGIFactory7
@@ -46,6 +47,8 @@ ComPtr<ID3D12GraphicsCommandList> commandList;
 ComPtr<IDXGISwapChain4> swapChain;
 ComPtr<ID3D12DescriptorHeap> rtvHeap;
 ComPtr<ID3D12DescriptorHeap> dsvHeap;
+ComPtr<ID3D12Resource> SwapChainBuffer[SwapChainBufferCount];
+ComPtr<ID3D12Resource> depthStencilBuffer;
 
 int WINAPI    //__stdcall,参数从右向左压入堆栈
 WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPSTR lpCmdLine, _In_ int nShowCmd)
@@ -149,6 +152,7 @@ bool InitDirect3D()
 	}
 	/*第二步：创建围栏并获取描述符大小*/
 	ThrowIfFailed(d3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE,IID_PPV_ARGS(&fence)));
+	rtvDescriptorSize = d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 	/*第三步：检测MSAA支持*/
 	/*第四步：创建命令队列，命令列表分配器，命令列表*/
 	CreateCommandObjects();
@@ -157,8 +161,21 @@ bool InitDirect3D()
 	/*第六步：创建描述符堆*/
 	CreateDescriptorHeaps();
 	/*初始化之外*/
-	/*第七步：创建渲染目标视图*/
-	/*第八步：创建渲染目标视图*/
+
+	/*第七步：创建RT视图*/
+
+	/*问：为何这里不用D3D12_CPU_DESCRIPTOR_HANDLE类型的句柄？*/
+	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHeapHandle(rtvHeap->GetCPUDescriptorHandleForHeapStart());
+	for (UINT i = 0; i < SwapChainBufferCount; i++)
+	{
+		//获得交换链内的第i个缓冲区
+		ThrowIfFailed(swapChain->GetBuffer(i, IID_PPV_ARGS(&SwapChainBuffer[i])));
+		//为此缓冲区创建一个rtv
+		d3dDevice->CreateRenderTargetView(SwapChainBuffer[i].Get(), nullptr, rtvHeapHandle);
+		//偏移到描述符堆中的下一个缓冲区
+		rtvHeapHandle.Offset(1, rtvDescriptorSize);
+	}
+	/*第八步：创建depth,stencil视图*/
 	return true;
 }
 bool Initialize(HINSTANCE instanceHandle, int show)
@@ -192,7 +209,7 @@ int Run()
 }
 void Draw()
 {
-
+	
 }
 void CreateCommandObjects()
 {
