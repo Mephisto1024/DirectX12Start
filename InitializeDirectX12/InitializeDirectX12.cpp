@@ -1,13 +1,6 @@
 ﻿#define WIN32_LEAN_AND_MEAN
 #include<windows.h>
 #include"InitializeDirectX12.h"
-#include <d3d12.h>	/*包含函数：
-D3D12CreateDevice()
-D3D12GetDebugInterface()
-类：
-ID3D12Device4
-*/
-#include "d3dx12.h"/*包含 创建RT视图所需的句柄 CD3DX12_CPU_DESCRIPTOR_HANDLE */
 #include <wrl.h>	/*windows Runtime C++ Template Library，方便使用ComPtr*/
 
 #include<dxgi1_6.h>/*包含：
@@ -176,6 +169,63 @@ bool InitDirect3D()
 		rtvHeapHandle.Offset(1, rtvDescriptorSize);
 	}
 	/*第八步：创建depth,stencil视图*/
+	D3D12_RESOURCE_DESC depthStencilDesc;
+	depthStencilDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	depthStencilDesc.Alignment = 0;
+	depthStencilDesc.Width = width;
+	depthStencilDesc.Height = height;
+	depthStencilDesc.DepthOrArraySize = 1;
+	depthStencilDesc.MipLevels = 1;
+	depthStencilDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;//
+	depthStencilDesc.SampleDesc.Count = msaaState ? 4 : 1;
+	depthStencilDesc.SampleDesc.Quality = msaaState ? (msaaQuality - 1) : 0;
+	depthStencilDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	depthStencilDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+
+	D3D12_CLEAR_VALUE optClear;
+	optClear.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	optClear.DepthStencil.Depth = 1.0f;
+	optClear.DepthStencil.Stencil = 0;
+	/* 此函数根据我们所提供的属性创建一个资源与一个堆，并把该资源提交到这个堆中 */
+	CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_DEFAULT);    //报错，要求左值
+	ThrowIfFailed(d3dDevice->CreateCommittedResource(
+		&heapProperties,    //默认堆：GPU可读写，CPU不可访问
+		D3D12_HEAP_FLAG_NONE,
+		&depthStencilDesc,
+		D3D12_RESOURCE_STATE_COMMON,
+		&optClear,
+		IID_PPV_ARGS(depthStencilBuffer.GetAddressOf())));
+
+	// 为整个资源的0 mip层创建描述符
+
+	d3dDevice->CreateDepthStencilView(
+		depthStencilBuffer.Get(), 
+		nullptr, /* */
+		dsvHeap->GetCPUDescriptorHandleForHeapStart());
+
+	// 将资源从初始状态转换为深度缓冲区
+	auto resourceBarrier = CD3DX12_RESOURCE_BARRIER::Transition(    //报错，要求左值
+		depthStencilBuffer.Get(),
+		D3D12_RESOURCE_STATE_COMMON,
+		D3D12_RESOURCE_STATE_DEPTH_WRITE);
+
+	commandList->ResourceBarrier(
+		1, 
+		&resourceBarrier);
+	/* 第九步：设置视口 */
+	
+	ScreenViewport.TopLeftX = 0;
+	ScreenViewport.TopLeftY = 0;
+	ScreenViewport.Width = static_cast<float>(width);
+	ScreenViewport.Height = static_cast<float>(height);
+	ScreenViewport.MinDepth = 0.0f;
+	ScreenViewport.MaxDepth = 1.0f;
+
+	commandList->RSSetViewports(1, &ScreenViewport);
+	/* 第十步：设置裁剪矩形 */
+	ScissorRect = { 0, 0, width, height };
+
+	commandList->RSSetScissorRects(1, &ScissorRect);
 	return true;
 }
 bool Initialize(HINSTANCE instanceHandle, int show)

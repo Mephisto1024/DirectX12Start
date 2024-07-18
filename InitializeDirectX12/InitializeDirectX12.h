@@ -1,5 +1,13 @@
 #pragma once
 
+#include <d3d12.h>	/*包含函数：
+D3D12CreateDevice()
+D3D12GetDebugInterface()
+类：
+ID3D12Device4
+*/
+#include "d3dx12.h"/*包含 创建RT视图所需的句柄 CD3DX12_CPU_DESCRIPTOR_HANDLE */
+
 #define ThrowIfFailed(x)                                              \
 {                                                                     \
     HRESULT hr__ = (x);												  \
@@ -15,6 +23,9 @@ int height = 600;
 const int SwapChainBufferCount = 2;
 int currBackBuffer = 0;
 UINT rtvDescriptorSize = 0;
+
+D3D12_VIEWPORT ScreenViewport;
+D3D12_RECT ScissorRect;
 
 class DxException
 {
