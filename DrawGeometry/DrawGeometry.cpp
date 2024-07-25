@@ -1,23 +1,21 @@
-﻿#define WIN32_LEAN_AND_MEAN
-#include<windows.h>
-#include"DrawGeometry.h"
-#include <wrl.h>	/*windows Runtime C++ Template Library，方便使用ComPtr*/
-
-#include<dxgi1_6.h>/*包含：
-IDXGIFactory7
-
-*/
-#include<DirectXMath.h> /* 包含 XMFLOAT3 */
+﻿#include"DrawGeometry.h"
+#include <DirectXColors.h>
 #include<vector>
+#include<memory>
+#include <array>
+
+#include <d3dcompiler.h>
+
 #if defined(_DEBUG)
 #include <dxgidebug.h>
 #endif
 
 
 using namespace Microsoft::WRL;		//ComPtr,
-
+using namespace DirectX;
 #pragma comment(lib, "d3d12.lib")    //D3D12GetDebugInterface()
 #pragma comment(lib, "dxgi.lib")    //CreateDXGIFactory()
+#pragma comment(lib, "d3dcompiler.lib")
 
 bool InitWindow(HINSTANCE instanceHandle, int show);
 bool InitDirect3D();
@@ -29,6 +27,8 @@ void CreateSwapChain();
 void CreateDescriptorHeaps();
 
 void BuildShadersAndInputLayout();
+void BuildGeometry();
+void PopulateCommandList();
 LRESULT CALLBACK //__stdcall
 WindowProcess(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -47,6 +47,7 @@ ComPtr<ID3D12Resource> SwapChainBuffer[SwapChainBufferCount];
 ComPtr<ID3D12Resource> depthStencilBuffer;
 
 std::vector<D3D12_INPUT_ELEMENT_DESC> InputElementDescs;
+std::unique_ptr<Mesh> mesh = nullptr;
 
 struct Vertex
 {
@@ -180,7 +181,7 @@ bool InitDirect3D()
 		rtvHeapHandle.Offset(1, rtvDescriptorSize);
 	}
 	/*第八步：创建depth,stencil视图*/
-	D3D12_RESOURCE_DESC depthStencilDesc;
+	D3D12_RESOURCE_DESC depthStencilDesc = {};
 	depthStencilDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 	depthStencilDesc.Alignment = 0;
 	depthStencilDesc.Width = width;
@@ -193,7 +194,7 @@ bool InitDirect3D()
 	depthStencilDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
 	depthStencilDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
 
-	D3D12_CLEAR_VALUE optClear;
+	D3D12_CLEAR_VALUE optClear = {};
 	optClear.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
 	optClear.DepthStencil.Depth = 1.0f;
 	optClear.DepthStencil.Stencil = 0;
@@ -220,9 +221,7 @@ bool InitDirect3D()
 		D3D12_RESOURCE_STATE_COMMON,
 		D3D12_RESOURCE_STATE_DEPTH_WRITE);
 
-	commandList->ResourceBarrier(
-		1,
-		&resourceBarrier);
+	commandList->ResourceBarrier(1,&resourceBarrier);
 	/* 第九步：设置视口 */
 
 	ScreenViewport.TopLeftX = 0;
@@ -272,7 +271,17 @@ int Run()
 }
 void Draw()
 {
+	// Record all the commands we need to render the scene into the command list.
+	PopulateCommandList();
 
+	// Add the command list to the queue for execution.
+	ID3D12CommandList* cmdsLists[] = { commandList.Get() };
+	commandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
+
+	// Present the frame.
+	//ThrowIfFailed(swapChain->Present(1, 0));
+
+	
 }
 void CreateCommandObjects()
 {
@@ -334,7 +343,7 @@ void CreateSwapChain()
 }
 void CreateDescriptorHeaps()
 {
-	D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc;
+	D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
 	rtvHeapDesc.NumDescriptors = SwapChainBufferCount;
 	rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
 	rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
@@ -343,7 +352,7 @@ void CreateDescriptorHeaps()
 		&rtvHeapDesc, IID_PPV_ARGS(rtvHeap.GetAddressOf())));
 
 
-	D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc;
+	D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc = {};
 	dsvHeapDesc.NumDescriptors = 1;
 	dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
 	dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
@@ -374,6 +383,59 @@ void BuildShadersAndInputLayout()
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 		{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
 	};
+}
+void BuildGeometry()
+{
+	std::array<Vertex,8> vertices =
+	{
+		Vertex({ XMFLOAT3(-1.0f, -1.0f, -1.0f), XMFLOAT4(Colors::White) }),
+		Vertex({ XMFLOAT3(-1.0f, +1.0f, -1.0f), XMFLOAT4(Colors::Black) }),
+		Vertex({ XMFLOAT3(+1.0f, +1.0f, -1.0f), XMFLOAT4(Colors::Red) }),
+		Vertex({ XMFLOAT3(+1.0f, -1.0f, -1.0f), XMFLOAT4(Colors::Green) }),
+		Vertex({ XMFLOAT3(-1.0f, -1.0f, +1.0f), XMFLOAT4(Colors::Blue) }),
+		Vertex({ XMFLOAT3(-1.0f, +1.0f, +1.0f), XMFLOAT4(Colors::Yellow) }),
+		Vertex({ XMFLOAT3(+1.0f, +1.0f, +1.0f), XMFLOAT4(Colors::Cyan) }),
+		Vertex({ XMFLOAT3(+1.0f, -1.0f, +1.0f), XMFLOAT4(Colors::Magenta) })
+	};
+
+	const UINT vbByteSize = (UINT)vertices.size() * sizeof(Vertex);
+
+	mesh = std::make_unique<Mesh>();
+	//将顶点数据放入CPU内存中
+	ThrowIfFailed(D3DCreateBlob(vbByteSize, &mesh->VertexBufferCPU));
+	CopyMemory(mesh->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
+	//将顶点数据从CPU传到GPU中
+	mesh->VertexBufferGPU = CreateDefaultBuffer(d3dDevice.Get(),
+		commandList.Get(), vertices.data(), vbByteSize, mesh->VertexBufferUploader);
+
+	mesh->VertexByteStride = sizeof(Vertex);
+	mesh->VertexBufferByteSize = vbByteSize;
+
+	/*mBoxGeo->IndexFormat = DXGI_FORMAT_R16_UINT;
+	mBoxGeo->IndexBufferByteSize = ibByteSize;*/
+}
+void PopulateCommandList()
+{	
+	// Command list allocators can only be reset when the associated 
+	// command lists have finished execution on the GPU; apps should use 
+	// fences to determine GPU execution progress.
+	ThrowIfFailed(commandAllocator->Reset());
+
+	// However, when ExecuteCommandList() is called on a particular command 
+	// list, that command list can then be reset at any time and must be before 
+	// re-recording.
+	//ThrowIfFailed(commandList->Reset(commandAllocator.Get(), pipelineState.Get()));
+
+	/* 顶点缓冲区的最后一步*/
+	/*D3D12_VERTEX_BUFFER_VIEW vbv = mesh->VertexBufferView();
+	commandList->IASetVertexBuffers(0, 1, &vbv);*/
+
+	//绘制！
+	/*commandList->DrawIndexedInstanced(
+		mBoxGeo->DrawArgs["box"].IndexCount, 
+		1, 0, 0, 0);*/
+
+	/*ThrowIfFailed(commandList->Close());*/
 }
 LRESULT CALLBACK WindowProcess(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
