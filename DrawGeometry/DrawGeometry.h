@@ -1,5 +1,6 @@
 #pragma once
-
+#include<string>
+#include<comdef.h>
 #include <d3d12.h>	/*°üº¬º¯Êý£º
 D3D12CreateDevice()
 D3D12GetDebugInterface()
@@ -20,11 +21,15 @@ IDXGIFactory7
 
 #include<unordered_map>
 using namespace Microsoft::WRL;
+
+#ifndef ThrowIfFailed
 #define ThrowIfFailed(x)                                              \
 {                                                                     \
-    HRESULT hr__ = (x);												  \
-    if(FAILED(hr__)) { throw DxException(hr__); }                     \
+    HRESULT hr__ = (x);                                               \
+    std::wstring wfn = AnsiToWString(__FILE__);                       \
+    if(FAILED(hr__)) { throw DxException(hr__, L#x, wfn, __LINE__); } \
 }
+#endif
 
 // Set true to use 4X MSAA.   The default is false.
 bool msaaState = false;    // 4X MSAA enabled
@@ -39,21 +44,37 @@ UINT rtvDescriptorSize = 0;
 D3D12_VIEWPORT ScreenViewport;
 D3D12_RECT ScissorRect;
 
+ std::wstring AnsiToWString(const std::string& str)
+{
+    WCHAR buffer[512];
+    MultiByteToWideChar(CP_ACP, 0, str.c_str(), -1, buffer, 512);
+    return std::wstring(buffer);
+}
+
 class DxException
 {
 public:
-	DxException(HRESULT hr) :hrError(hr)
-	{
+    DxException() = default;
+    DxException(HRESULT hr, const std::wstring& functionName, const std::wstring& filename, int lineNumber)
+        : ErrorCode(hr), FunctionName(functionName), Filename(filename), LineNumber(lineNumber)
+    {
+    }
 
-	}
-	HRESULT Error() const
-	{
-		return hrError;
-	}
-private:
-	const HRESULT hrError;
+    HRESULT ErrorCode = S_OK;
+    std::wstring FunctionName;
+    std::wstring Filename;
+    int LineNumber = -1;
 
+    std::wstring ToString()const
+    {
+        // Get the string description of the error code.
+        _com_error err(ErrorCode);
+        std::wstring msg = err.ErrorMessage();
+
+        return FunctionName + L" failed in " + Filename + L"; line " + std::to_wstring(LineNumber) + L"; error: " + msg;
+    }
 };
+
 struct Mesh
 {
     Microsoft::WRL::ComPtr<ID3DBlob> VertexBufferCPU = nullptr;
@@ -163,3 +184,18 @@ Microsoft::WRL::ComPtr<ID3D12Resource> CreateDefaultBuffer(
     return defaultBuffer;
 }
 
+static UINT CalcConstantBufferByteSize(UINT byteSize)
+{
+    // Constant buffers must be a multiple of the minimum hardware
+    // allocation size (usually 256 bytes).  So round up to nearest
+    // multiple of 256.  We do this by adding 255 and then masking off
+    // the lower 2 bytes which store all bits < 256.
+    // Example: Suppose byteSize = 300.
+    // (300 + 255) & ~255
+    // 555 & ~255
+    // 0x022B & ~0x00ff
+    // 0x022B & 0xff00
+    // 0x0200
+    // 512
+    return (byteSize + 255) & ~255;
+}

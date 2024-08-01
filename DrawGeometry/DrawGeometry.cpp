@@ -3,7 +3,7 @@
 #include<vector>
 #include<memory>
 #include <array>
-
+#include <string>
 #include <d3dcompiler.h>
 
 #if defined(_DEBUG)
@@ -21,6 +21,7 @@ bool InitWindow(HINSTANCE instanceHandle, int show);
 bool InitDirect3D();
 bool Initialize(HINSTANCE instanceHandle, int show);
 int Run();
+void Update();
 void Draw();
 void CreateCommandObjects();
 void CreateSwapChain();
@@ -28,6 +29,7 @@ void CreateDescriptorHeaps();
 
 void BuildShadersAndInputLayout();
 void BuildGeometry();
+void BuildConstantBuffers();
 void PopulateCommandList();
 LRESULT CALLBACK //__stdcall
 WindowProcess(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -48,11 +50,21 @@ ComPtr<ID3D12Resource> depthStencilBuffer;
 
 std::vector<D3D12_INPUT_ELEMENT_DESC> InputElementDescs;
 std::unique_ptr<Mesh> mesh = nullptr;
+ComPtr<ID3D12Resource> ObjectConstantBuffer; BYTE* MappedData = nullptr;
 
 struct Vertex
 {
 	DirectX::XMFLOAT3 Pos;
 	DirectX::XMFLOAT4 Color;
+};
+
+struct ObjectConstants
+{
+	XMFLOAT4X4 WorldViewProj = XMFLOAT4X4(
+		1.0f, 0.0f, 0.0f, 0.0f,
+		0.0f, 1.0f, 0.0f, 0.0f,
+		0.0f, 0.0f, 1.0f, 0.0f,
+		0.0f, 0.0f, 0.0f, 1.0f);
 };
 
 int WINAPI    //__stdcall,参数从右向左压入堆栈
@@ -65,7 +77,8 @@ WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPSTR l
 	}
 	catch (DxException& e)
 	{
-		MessageBox(nullptr, (LPCWSTR)e.Error(), L"HR Failed", MB_OK);
+		
+		MessageBox(nullptr, e.ToString().c_str(), L"HR Failed", MB_OK);
 		return 0;
 	}
 
@@ -245,9 +258,9 @@ bool Initialize(HINSTANCE instanceHandle, int show)
 
 	if (!InitDirect3D())
 		return false;
-
+	BuildConstantBuffers();
 	BuildShadersAndInputLayout();
-
+	BuildGeometry();
 	return true;
 }
 int Run()
@@ -264,10 +277,35 @@ int Run()
 		//否则游戏逻辑代码
 		else
 		{
+			Update();
 			Draw();
 		}
 	}
 	return (int)msg.wParam;
+}
+void Update()
+{
+	//更新mvp矩阵
+	XMFLOAT4X4 worldViewProj = XMFLOAT4X4(
+		1.0f, 0.0f, 0.0f, 0.0f,
+		0.0f, 1.0f, 0.0f, 0.0f,
+		0.0f, 0.0f, 1.0f, 0.0f,
+		0.0f, 0.0f, 0.0f, 1.0f);
+
+	ObjectConstants objConstants;
+	objConstants.WorldViewProj = worldViewProj;
+
+	/* 更新常量缓冲区 */
+	//首先获得指向欲更新资源数据的指针
+	
+	//利用memcpy函数将数据从系统内存复制到常量缓冲区
+	//memcpy(MappedData, &objConstants, sizeof(ObjectConstants));
+	//完成后，依次取消映射，释放映射内存
+	if (ObjectConstantBuffer != nullptr)
+		ObjectConstantBuffer->Unmap(0, nullptr);
+
+	MappedData = nullptr;
+
 }
 void Draw()
 {
@@ -413,6 +451,25 @@ void BuildGeometry()
 
 	/*mBoxGeo->IndexFormat = DXGI_FORMAT_R16_UINT;
 	mBoxGeo->IndexBufferByteSize = ibByteSize;*/
+}
+void BuildConstantBuffers()
+{
+	//创建常量缓冲区，常量缓冲区对大小有要求
+	UINT ConstantBufferByteSize = CalcConstantBufferByteSize(sizeof(ObjectConstants));
+	UINT elementCount = 1;
+
+	auto heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+	auto desc = CD3DX12_RESOURCE_DESC::Buffer(ConstantBufferByteSize * elementCount);
+	ThrowIfFailed(d3dDevice->CreateCommittedResource(
+		&heapProps,
+		D3D12_HEAP_FLAG_NONE,
+		&desc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&ObjectConstantBuffer)));
+	
+	    ThrowIfFailed(ObjectConstantBuffer->Map(0, nullptr, reinterpret_cast<void**>(&MappedData)));
+
 }
 void PopulateCommandList()
 {	
