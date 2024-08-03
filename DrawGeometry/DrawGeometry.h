@@ -43,6 +43,8 @@ UINT rtvDescriptorSize = 0;
 
 D3D12_VIEWPORT ScreenViewport;
 D3D12_RECT ScissorRect;
+/* Win32 */
+bool Paused = false;
 
  std::wstring AnsiToWString(const std::string& str)
 {

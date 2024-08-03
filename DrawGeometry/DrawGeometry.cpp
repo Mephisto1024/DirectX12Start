@@ -10,7 +10,6 @@
 #include <dxgidebug.h>
 #endif
 
-
 using namespace Microsoft::WRL;		//ComPtr,
 using namespace DirectX;
 #pragma comment(lib, "d3d12.lib")    //D3D12GetDebugInterface()
@@ -27,9 +26,12 @@ void CreateCommandObjects();
 void CreateSwapChain();
 void CreateDescriptorHeaps();
 
+void BuildConstantBuffers();
+void BuildRootSignature();
 void BuildShadersAndInputLayout();
 void BuildGeometry();
-void BuildConstantBuffers();
+void BuildPSO();
+
 void PopulateCommandList();
 LRESULT CALLBACK //__stdcall
 WindowProcess(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -45,8 +47,10 @@ ComPtr<ID3D12GraphicsCommandList> commandList;
 ComPtr<IDXGISwapChain4> swapChain;
 ComPtr<ID3D12DescriptorHeap> rtvHeap;
 ComPtr<ID3D12DescriptorHeap> dsvHeap;
+ComPtr<ID3D12DescriptorHeap> CbvHeap;
 ComPtr<ID3D12Resource> SwapChainBuffer[SwapChainBufferCount];
 ComPtr<ID3D12Resource> depthStencilBuffer;
+ComPtr<ID3D12RootSignature> RootSignature = nullptr;
 
 std::vector<D3D12_INPUT_ELEMENT_DESC> InputElementDescs;
 std::unique_ptr<Mesh> mesh = nullptr;
@@ -259,8 +263,10 @@ bool Initialize(HINSTANCE instanceHandle, int show)
 	if (!InitDirect3D())
 		return false;
 	BuildConstantBuffers();
+	BuildRootSignature();
 	BuildShadersAndInputLayout();
 	BuildGeometry();
+
 	return true;
 }
 int Run()
@@ -300,6 +306,7 @@ void Update()
 	
 	//利用memcpy函数将数据从系统内存复制到常量缓冲区
 	//memcpy(MappedData, &objConstants, sizeof(ObjectConstants));
+	
 	//完成后，依次取消映射，释放映射内存
 	if (ObjectConstantBuffer != nullptr)
 		ObjectConstantBuffer->Unmap(0, nullptr);
@@ -468,7 +475,32 @@ void BuildConstantBuffers()
 		nullptr,
 		IID_PPV_ARGS(&ObjectConstantBuffer)));
 	
-	    ThrowIfFailed(ObjectConstantBuffer->Map(0, nullptr, reinterpret_cast<void**>(&MappedData)));
+	ThrowIfFailed(ObjectConstantBuffer->Map(0, nullptr, reinterpret_cast<void**>(&MappedData)));
+
+	//获得常量缓冲区的起始地址
+	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = ObjectConstantBuffer->GetGPUVirtualAddress();
+
+	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};    //描述cb子集而不是整个cb
+	cbvDesc.BufferLocation = cbAddress;
+	cbvDesc.SizeInBytes = CalcConstantBufferByteSize(sizeof(ObjectConstants));
+
+	//创建cb描述符堆
+	D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc = {};
+	cbvHeapDesc.NumDescriptors = 1;
+	cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	cbvHeapDesc.NodeMask = 0;
+
+	ThrowIfFailed(d3dDevice->CreateDescriptorHeap(&cbvHeapDesc,
+		IID_PPV_ARGS(&CbvHeap)));
+
+	//创建cb视图
+	d3dDevice->CreateConstantBufferView(
+		&cbvDesc,
+		CbvHeap->GetCPUDescriptorHandleForHeapStart());
+}
+void BuildRootSignature()
+{
 
 }
 void PopulateCommandList()
@@ -498,9 +530,36 @@ LRESULT CALLBACK WindowProcess(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 {
 	switch (msg)
 	{
+	case WM_ACTIVATE:
+		if (LOWORD(wParam) == WA_INACTIVE)
+		{
+			Paused = true;
+			//mTimer.Stop();
+		}
+		else
+		{
+			Paused = false;
+			//mTimer.Start();
+		}
+		return 0;
+	/* 处理与鼠标相关的消息 */
 	case WM_LBUTTONDOWN:
 		MessageBox(0, L"InitializeDirectX12", L"Initialize", MB_OK);
 		return 0;
+	
+	case WM_MBUTTONDOWN:
+	case WM_RBUTTONDOWN:
+		//OnMouseDown(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+		return 0;
+	case WM_LBUTTONUP:
+	case WM_MBUTTONUP:
+	case WM_RBUTTONUP:
+		//OnMouseUp(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+		return 0;
+	case WM_MOUSEMOVE:
+		//OnMouseMove(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+		return 0;
+
 	case WM_KEYDOWN:
 		if (wParam == VK_ESCAPE)
 			DestroyWindow(MainWindow);
@@ -508,6 +567,7 @@ LRESULT CALLBACK WindowProcess(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 	case WM_DESTROY:
 		PostQuitMessage(0);
 		return 0;
+
 	}
 	return DefWindowProc(hwnd, msg, wParam, lParam);
 }
