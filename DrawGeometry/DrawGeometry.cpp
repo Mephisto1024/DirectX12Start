@@ -501,7 +501,39 @@ void BuildConstantBuffers()
 }
 void BuildRootSignature()
 {
+	//MSDN: 根签名是一个绑定约定，由应用程序定义，着色器使用它来定位他们需要访问的资源。
+	
+	// 根参数数组，可以存储 表、根描述符或根常量
+	CD3DX12_ROOT_PARAMETER slotRootParameter[1];
 
+	// 创建一个只含一个CBV的表.
+	CD3DX12_DESCRIPTOR_RANGE cbvTable;
+	cbvTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
+	//将表放到根参数数组中
+	slotRootParameter[0].InitAsDescriptorTable(1, &cbvTable);
+
+	// 根签名由一组根参数构成。
+	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(1, slotRootParameter, 0, nullptr,
+		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+	
+	// dx12规定必须先将根签名的描述布局进行序列化处理，待其转换为ID3DBlob后才可传入CreateRootSignature函数正式创建根签名
+	ComPtr<ID3DBlob> serializedRootSig = nullptr;
+	ComPtr<ID3DBlob> errorBlob = nullptr;
+	HRESULT hr = D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+		serializedRootSig.GetAddressOf(), errorBlob.GetAddressOf());
+
+	if (errorBlob != nullptr)
+	{
+		::OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+	}
+	ThrowIfFailed(hr);
+	// 创建根签名
+	ThrowIfFailed(d3dDevice->CreateRootSignature(
+		0,
+		serializedRootSig->GetBufferPointer(),
+		serializedRootSig->GetBufferSize(),
+		IID_PPV_ARGS(&RootSignature)));
 }
 void PopulateCommandList()
 {	
