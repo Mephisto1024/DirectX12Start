@@ -4,7 +4,7 @@
 #include<memory>
 #include <array>
 #include <string>
-#include <d3dcompiler.h>
+
 
 #if defined(_DEBUG)
 #include <dxgidebug.h>
@@ -51,6 +51,8 @@ ComPtr<ID3D12DescriptorHeap> CbvHeap;
 ComPtr<ID3D12Resource> SwapChainBuffer[SwapChainBufferCount];
 ComPtr<ID3D12Resource> depthStencilBuffer;
 ComPtr<ID3D12RootSignature> RootSignature = nullptr;
+ComPtr<ID3DBlob> VSByteCode = nullptr;
+ComPtr<ID3DBlob> PSByteCode = nullptr;
 
 std::vector<D3D12_INPUT_ELEMENT_DESC> InputElementDescs;
 std::unique_ptr<Mesh> mesh = nullptr;
@@ -422,6 +424,8 @@ void CreateDescriptorHeaps()
 }
 void BuildShadersAndInputLayout()
 {
+	VSByteCode = CompileShader(L"VertexShader.hlsl", nullptr, "main", "vs_5_0");
+	PSByteCode = CompileShader(L"PixelShader.hlsl", nullptr, "main", "ps_5_0");
 
 	InputElementDescs =
 	{
