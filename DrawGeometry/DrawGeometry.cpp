@@ -53,6 +53,7 @@ ComPtr<ID3D12Resource> depthStencilBuffer;
 ComPtr<ID3D12RootSignature> RootSignature = nullptr;
 ComPtr<ID3DBlob> VSByteCode = nullptr;
 ComPtr<ID3DBlob> PSByteCode = nullptr;
+ComPtr<ID3D12PipelineState> PSO = nullptr;
 
 std::vector<D3D12_INPUT_ELEMENT_DESC> InputElementDescs;
 std::unique_ptr<Mesh> mesh = nullptr;
@@ -268,7 +269,7 @@ bool Initialize(HINSTANCE instanceHandle, int show)
 	BuildRootSignature();
 	BuildShadersAndInputLayout();
 	BuildGeometry();
-
+	BuildPSO();
 	return true;
 }
 int Run()
@@ -462,6 +463,34 @@ void BuildGeometry()
 
 	/*mBoxGeo->IndexFormat = DXGI_FORMAT_R16_UINT;
 	mBoxGeo->IndexBufferByteSize = ibByteSize;*/
+}
+void BuildPSO()
+{
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc;
+	ZeroMemory(&psoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
+	psoDesc.InputLayout = { InputElementDescs.data(), (UINT)InputElementDescs.size() };
+	psoDesc.pRootSignature = RootSignature.Get();
+	psoDesc.VS =
+	{
+		reinterpret_cast<BYTE*>(VSByteCode->GetBufferPointer()),
+		VSByteCode->GetBufferSize()
+	};
+	psoDesc.PS =
+	{
+		reinterpret_cast<BYTE*>(PSByteCode->GetBufferPointer()),
+		PSByteCode->GetBufferSize()
+	};
+	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+	psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	psoDesc.SampleMask = UINT_MAX;
+	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	psoDesc.NumRenderTargets = 1;
+	psoDesc.RTVFormats[0] = BackBufferFormat;
+	psoDesc.SampleDesc.Count = msaaState ? 4 : 1;
+	psoDesc.SampleDesc.Quality = msaaState ? (msaaQuality - 1) : 0;
+	psoDesc.DSVFormat = DepthStencilFormat;
+	ThrowIfFailed(d3dDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&PSO)));
 }
 void BuildConstantBuffers()
 {
