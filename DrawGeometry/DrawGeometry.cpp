@@ -25,6 +25,7 @@ void Draw();
 void CreateCommandObjects();
 void CreateSwapChain();
 void CreateDescriptorHeaps();
+void FlushCommandQueue();
 
 void BuildConstantBuffers();
 void BuildRootSignature();
@@ -265,11 +266,24 @@ bool Initialize(HINSTANCE instanceHandle, int show)
 
 	if (!InitDirect3D())
 		return false;
+
+	// 重置命令列表，这可以不要把,
+	ThrowIfFailed(commandList->Reset(commandAllocator.Get(), nullptr));
+
 	BuildConstantBuffers();
 	BuildRootSignature();
 	BuildShadersAndInputLayout();
 	BuildGeometry();
 	BuildPSO();
+
+	// 执行初始化命令
+	ThrowIfFailed(commandList->Close());
+	ID3D12CommandList* cmdsLists[] = { commandList.Get() };
+	commandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
+
+	// CPU要等待GPU端初始化完成
+	FlushCommandQueue();
+
 	return true;
 }
 int Run()
@@ -422,6 +436,28 @@ void CreateDescriptorHeaps()
 
 	为了用偏移量找到当前后台缓冲区的RTV描述符，我们必须知道其大小
 	*/
+}
+void FlushCommandQueue()
+{
+	CurrentFence++;
+
+	// Add an instruction to the command queue to set a new fence point.  Because we 
+	// are on the GPU timeline, the new fence point won't be set until the GPU finishes
+	// processing all the commands prior to this Signal().
+	ThrowIfFailed(commandQueue->Signal(fence.Get(), CurrentFence));
+
+	// Wait until the GPU has completed commands up to this fence point.
+	if (fence->GetCompletedValue() < CurrentFence)
+	{
+		HANDLE eventHandle = CreateEventEx(nullptr, nullptr, false, EVENT_ALL_ACCESS);
+
+		// Fire event when GPU hits current fence.  
+		ThrowIfFailed(fence->SetEventOnCompletion(CurrentFence, eventHandle));
+
+		// Wait until the GPU hits current fence event is fired.
+		WaitForSingleObject(eventHandle, INFINITE);
+		CloseHandle(eventHandle);
+	}
 }
 void BuildShadersAndInputLayout()
 {
