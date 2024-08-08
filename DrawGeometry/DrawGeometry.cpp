@@ -340,10 +340,12 @@ void Draw()
 	ID3D12CommandList* cmdsLists[] = { commandList.Get() };
 	commandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
 
-	// Present the frame.
-	//ThrowIfFailed(swapChain->Present(1, 0));
+	// 交换后台缓冲区与前台缓冲区
+	ThrowIfFailed(swapChain->Present(0, 0));
+	currBackBuffer = (currBackBuffer + 1) % SwapChainBufferCount;
 
-	
+	//等待绘制此帧的一系列命令执行完毕
+	FlushCommandQueue();
 }
 void CreateCommandObjects()
 {
@@ -606,26 +608,71 @@ void BuildRootSignature()
 }
 void PopulateCommandList()
 {	
-	// Command list allocators can only be reset when the associated 
-	// command lists have finished execution on the GPU; apps should use 
-	// fences to determine GPU execution progress.
+	// 只有当相关的命令列表在GPU上完成执行时，才能重置命令列表分配器;
+	// 应用程序应该使用栅栏来确定GPU的执行进度。
 	ThrowIfFailed(commandAllocator->Reset());
 
 	// However, when ExecuteCommandList() is called on a particular command 
 	// list, that command list can then be reset at any time and must be before 
 	// re-recording.
-	//ThrowIfFailed(commandList->Reset(commandAllocator.Get(), pipelineState.Get()));
+	ThrowIfFailed(commandList->Reset(commandAllocator.Get(), PSO.Get()));
+
+	commandList->RSSetViewports(1, &ScreenViewport);
+	commandList->RSSetScissorRects(1, &ScissorRect);
+
+	// Indicate a state transition on the resource usage.
+	auto Barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+		SwapChainBuffer[currBackBuffer].Get(),
+		D3D12_RESOURCE_STATE_PRESENT, 
+		D3D12_RESOURCE_STATE_RENDER_TARGET);
+	commandList->ResourceBarrier(1, &Barrier);
+
+	//get CurrentBackBufferView
+	D3D12_CPU_DESCRIPTOR_HANDLE CurrentBackBufferView = CD3DX12_CPU_DESCRIPTOR_HANDLE(
+		rtvHeap->GetCPUDescriptorHandleForHeapStart(),
+		currBackBuffer,
+		rtvDescriptorSize);
+	//get dsView
+	D3D12_CPU_DESCRIPTOR_HANDLE DepthStencilView = dsvHeap->GetCPUDescriptorHandleForHeapStart();
+
+	// Clear the back buffer and depth buffer.
+	commandList->ClearRenderTargetView(CurrentBackBufferView, Colors::LightSteelBlue, 0, nullptr);
+	commandList->ClearDepthStencilView(DepthStencilView, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+
+	// Specify the buffers we are going to render to.
+	commandList->OMSetRenderTargets(1, &CurrentBackBufferView, true, &DepthStencilView);
+
+	ID3D12DescriptorHeap* descriptorHeaps[] = { CbvHeap.Get() };
+	commandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+
+	commandList->SetGraphicsRootSignature(RootSignature.Get());
+
+	//get VertexBufferView and IndexBufferView
+	D3D12_VERTEX_BUFFER_VIEW VertexBufferView = mesh->VertexBufferView();
+	D3D12_INDEX_BUFFER_VIEW IndexBufferView = mesh->IndexBufferView();
+
+	commandList->IASetVertexBuffers(0, 1, &VertexBufferView);
+	commandList->IASetIndexBuffer(&IndexBufferView);
+	commandList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	commandList->SetGraphicsRootDescriptorTable(0, CbvHeap->GetGPUDescriptorHandleForHeapStart());
+
+	//绘制！
+	//commandList->DrawIndexedInstanced(mesh->DrawArgs["box"].IndexCount,1, 0, 0, 0);
+
+	// Indicate a state transition on the resource usage.
+	auto Barrier1 = CD3DX12_RESOURCE_BARRIER::Transition(
+		SwapChainBuffer[currBackBuffer].Get(),
+		D3D12_RESOURCE_STATE_RENDER_TARGET,
+		D3D12_RESOURCE_STATE_PRESENT);
+	commandList->ResourceBarrier(1, &Barrier1);
+
+	// Done recording commands.
+	ThrowIfFailed(commandList->Close());
 
 	/* 顶点缓冲区的最后一步*/
 	/*D3D12_VERTEX_BUFFER_VIEW vbv = mesh->VertexBufferView();
 	commandList->IASetVertexBuffers(0, 1, &vbv);*/
-
-	//绘制！
-	/*commandList->DrawIndexedInstanced(
-		mBoxGeo->DrawArgs["box"].IndexCount, 
-		1, 0, 0, 0);*/
-
-	/*ThrowIfFailed(commandList->Close());*/
 }
 LRESULT CALLBACK WindowProcess(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
@@ -645,7 +692,7 @@ LRESULT CALLBACK WindowProcess(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 		return 0;
 	/* 处理与鼠标相关的消息 */
 	case WM_LBUTTONDOWN:
-		MessageBox(0, L"InitializeDirectX12", L"Initialize", MB_OK);
+		MessageBox(0, L"DrawGeometry", L"DrawGeometry", MB_OK);
 		return 0;
 	
 	case WM_MBUTTONDOWN:
