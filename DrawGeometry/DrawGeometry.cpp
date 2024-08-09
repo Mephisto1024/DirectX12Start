@@ -310,20 +310,27 @@ int Run()
 void Update()
 {
 	//更新mvp矩阵
-	XMFLOAT4X4 worldViewProj = XMFLOAT4X4(
+	/*XMFLOAT4X4 worldViewProj = XMFLOAT4X4(
 		1.0f, 0.0f, 0.0f, 0.0f,
 		0.0f, 1.0f, 0.0f, 0.0f,
 		0.0f, 0.0f, 1.0f, 0.0f,
-		0.0f, 0.0f, 0.0f, 1.0f);
+		0.0f, 0.0f, 0.0f, 1.0f);*/
+
+	XMFLOAT4X4 worldViewProj = XMFLOAT4X4(
+		0.7724, 0.0000, 1.6377, 0.0000,
+		-1.2602, 1.9715, 0.5944, -0.0000,
+		-0.7394, -0.5777, 0.3487, 4.0040,
+		-0.7386, -0.5771, 0.3483, 5.0000);
 
 	ObjectConstants objConstants;
 	objConstants.WorldViewProj = worldViewProj;
 
 	/* 更新常量缓冲区 */
 	//首先获得指向欲更新资源数据的指针
-	
+	ThrowIfFailed(ObjectConstantBuffer->Map(0, nullptr, reinterpret_cast<void**>(&MappedData)));
+
 	//利用memcpy函数将数据从系统内存复制到常量缓冲区
-	//memcpy(MappedData, &objConstants, sizeof(ObjectConstants));
+	memcpy(MappedData, &objConstants, sizeof(ObjectConstants));
 	
 	//完成后，依次取消映射，释放映射内存
 	if (ObjectConstantBuffer != nullptr)
@@ -627,7 +634,8 @@ void BuildRootSignature()
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
 	
-	// dx12规定必须先将根签名的描述布局进行序列化处理，待其转换为ID3DBlob后才可传入CreateRootSignature函数正式创建根签名
+	// dx12规定必须先将根签名的描述布局进行序列化处理，
+	// 待其转换为ID3DBlob后才可传入CreateRootSignature函数正式创建根签名
 	ComPtr<ID3DBlob> serializedRootSig = nullptr;
 	ComPtr<ID3DBlob> errorBlob = nullptr;
 	HRESULT hr = D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1,
