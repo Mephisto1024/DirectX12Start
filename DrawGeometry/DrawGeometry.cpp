@@ -59,6 +59,7 @@ ComPtr<ID3D12PipelineState> PSO = nullptr;
 std::vector<D3D12_INPUT_ELEMENT_DESC> InputElementDescs;
 std::unique_ptr<Mesh> mesh = nullptr;
 ComPtr<ID3D12Resource> ObjectConstantBuffer; BYTE* MappedData = nullptr;
+UINT IndexCount = 0;
 
 struct Vertex
 {
@@ -267,7 +268,7 @@ bool Initialize(HINSTANCE instanceHandle, int show)
 	if (!InitDirect3D())
 		return false;
 
-	// 重置命令列表，这可以不要把,
+	// 重置命令列表
 	ThrowIfFailed(commandList->Reset(commandAllocator.Get(), nullptr));
 
 	BuildConstantBuffers();
@@ -447,7 +448,6 @@ void FlushCommandQueue()
 	// are on the GPU timeline, the new fence point won't be set until the GPU finishes
 	// processing all the commands prior to this Signal().
 	ThrowIfFailed(commandQueue->Signal(fence.Get(), CurrentFence));
-
 	// Wait until the GPU has completed commands up to this fence point.
 	if (fence->GetCompletedValue() < CurrentFence)
 	{
@@ -463,6 +463,7 @@ void FlushCommandQueue()
 }
 void BuildShadersAndInputLayout()
 {
+	HRESULT hr = S_OK;
 	VSByteCode = CompileShader(L"VertexShader.hlsl", nullptr, "main", "vs_5_0");
 	PSByteCode = CompileShader(L"PixelShader.hlsl", nullptr, "main", "ps_5_0");
 
@@ -499,8 +500,46 @@ void BuildGeometry()
 	mesh->VertexByteStride = sizeof(Vertex);
 	mesh->VertexBufferByteSize = vbByteSize;
 
-	/*mBoxGeo->IndexFormat = DXGI_FORMAT_R16_UINT;
-	mBoxGeo->IndexBufferByteSize = ibByteSize;*/
+	/*索引部分*/
+	std::array<std::uint16_t, 36> indices =
+	{
+		// front face
+		0, 1, 2,
+		0, 2, 3,
+
+		// back face
+		4, 6, 5,
+		4, 7, 6,
+
+		// left face
+		4, 5, 1,
+		4, 1, 0,
+
+		// right face
+		3, 2, 6,
+		3, 6, 7,
+
+		// top face
+		1, 5, 6,
+		1, 6, 2,
+
+		// bottom face
+		4, 0, 3,
+		4, 3, 7
+	};
+
+	const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
+
+	ThrowIfFailed(D3DCreateBlob(ibByteSize, &mesh->IndexBufferCPU));
+	CopyMemory(mesh->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
+
+	mesh->IndexBufferGPU = CreateDefaultBuffer(d3dDevice.Get(),
+		commandList.Get(), indices.data(), ibByteSize, mesh->IndexBufferUploader);
+
+	mesh->IndexFormat = DXGI_FORMAT_R16_UINT;
+	mesh->IndexBufferByteSize = ibByteSize;
+
+	IndexCount = (UINT)indices.size();
 }
 void BuildPSO()
 {
@@ -636,7 +675,7 @@ void PopulateCommandList()
 	D3D12_CPU_DESCRIPTOR_HANDLE DepthStencilView = dsvHeap->GetCPUDescriptorHandleForHeapStart();
 
 	// Clear the back buffer and depth buffer.
-	commandList->ClearRenderTargetView(CurrentBackBufferView, Colors::LightSteelBlue, 0, nullptr);
+	commandList->ClearRenderTargetView(CurrentBackBufferView, Colors::AntiqueWhite, 0, nullptr);
 	commandList->ClearDepthStencilView(DepthStencilView, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
 	// Specify the buffers we are going to render to.
@@ -658,7 +697,7 @@ void PopulateCommandList()
 	commandList->SetGraphicsRootDescriptorTable(0, CbvHeap->GetGPUDescriptorHandleForHeapStart());
 
 	//绘制！
-	//commandList->DrawIndexedInstanced(mesh->DrawArgs["box"].IndexCount,1, 0, 0, 0);
+	commandList->DrawIndexedInstanced(IndexCount,1, 0, 0, 0);
 
 	// Indicate a state transition on the resource usage.
 	auto Barrier1 = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -670,9 +709,6 @@ void PopulateCommandList()
 	// Done recording commands.
 	ThrowIfFailed(commandList->Close());
 
-	/* 顶点缓冲区的最后一步*/
-	/*D3D12_VERTEX_BUFFER_VIEW vbv = mesh->VertexBufferView();
-	commandList->IASetVertexBuffers(0, 1, &vbv);*/
 }
 LRESULT CALLBACK WindowProcess(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
