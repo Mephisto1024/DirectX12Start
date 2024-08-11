@@ -1,5 +1,6 @@
 ﻿#include"DrawGeometry.h"
 #include <DirectXColors.h>
+#include < WindowsX.h >
 #include<vector>
 #include<memory>
 #include <array>
@@ -22,6 +23,7 @@ bool Initialize(HINSTANCE instanceHandle, int show);
 int Run();
 void Update();
 void Draw();
+void OnResize();
 void CreateCommandObjects();
 void CreateSwapChain();
 void CreateDescriptorHeaps();
@@ -34,8 +36,13 @@ void BuildGeometry();
 void BuildPSO();
 
 void PopulateCommandList();
+
+/* Win32 */
 LRESULT CALLBACK //__stdcall
 WindowProcess(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+void OnMouseDown(WPARAM btnState, int x, int y);
+void OnMouseUp(WPARAM btnState, int x, int y);
+void OnMouseMove(WPARAM btnState, int x, int y);
 
 HWND MainWindow = 0;
 D3D_FEATURE_LEVEL d3dFeatureLevel = D3D_FEATURE_LEVEL_12_2;
@@ -55,6 +62,14 @@ ComPtr<ID3D12RootSignature> RootSignature = nullptr;
 ComPtr<ID3DBlob> VSByteCode = nullptr;
 ComPtr<ID3DBlob> PSByteCode = nullptr;
 ComPtr<ID3D12PipelineState> PSO = nullptr;
+
+XMFLOAT4X4 matModel = Identity4x4();
+XMFLOAT4X4 matView = Identity4x4();
+XMFLOAT4X4 matProj = Identity4x4();
+
+float mTheta = 1.3f * XM_PI;
+float mPhi = XM_PIDIV4;
+float mRadius = 5.0f;
 
 std::vector<D3D12_INPUT_ELEMENT_DESC> InputElementDescs;
 std::unique_ptr<Mesh> mesh = nullptr;
@@ -120,8 +135,8 @@ bool InitWindow(HINSTANCE instanceHandle, int show)
 		WS_OVERLAPPEDWINDOW,
 		CW_USEDEFAULT,
 		CW_USEDEFAULT,
-		CW_USEDEFAULT,
-		CW_USEDEFAULT,
+		width,
+		height,
 		0, 0, instanceHandle, 0);
 
 	if (MainWindow == 0)
@@ -268,6 +283,8 @@ bool Initialize(HINSTANCE instanceHandle, int show)
 	if (!InitDirect3D())
 		return false;
 
+	OnResize();
+
 	// 重置命令列表
 	ThrowIfFailed(commandList->Reset(commandAllocator.Get(), nullptr));
 
@@ -309,21 +326,26 @@ int Run()
 }
 void Update()
 {
-	//更新mvp矩阵
-	/*XMFLOAT4X4 worldViewProj = XMFLOAT4X4(
-		1.0f, 0.0f, 0.0f, 0.0f,
-		0.0f, 1.0f, 0.0f, 0.0f,
-		0.0f, 0.0f, 1.0f, 0.0f,
-		0.0f, 0.0f, 0.0f, 1.0f);*/
+	/* 更新mvp矩阵 */
+	// Convert Spherical to Cartesian coordinates.
+	float x = mRadius * sinf(mPhi) * cosf(mTheta);
+	float z = mRadius * sinf(mPhi) * sinf(mTheta);
+	float y = mRadius * cosf(mPhi);
+	// Build the view matrix.
+	XMVECTOR pos = XMVectorSet(x, y, z, 1.0f);
+	XMVECTOR target = XMVectorZero();
+	XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
 
-	XMFLOAT4X4 worldViewProj = XMFLOAT4X4(
-		0.7724, 0.0000, 1.6377, 0.0000,
-		-1.2602, 1.9715, 0.5944, -0.0000,
-		-0.7394, -0.5777, 0.3487, 4.0040,
-		-0.7386, -0.5771, 0.3483, 5.0000);
+	XMMATRIX view = XMMatrixLookAtLH(pos, target, up);
+	XMStoreFloat4x4(&matView, view);
+
+	XMMATRIX world = XMLoadFloat4x4(&matModel);
+	XMMATRIX proj = XMLoadFloat4x4(&matProj);
+	XMMATRIX worldViewProj = world * view * proj;
 
 	ObjectConstants objConstants;
-	objConstants.WorldViewProj = worldViewProj;
+	//objConstants.WorldViewProj = worldViewProj;
+	XMStoreFloat4x4(&objConstants.WorldViewProj, XMMatrixTranspose(worldViewProj));
 
 	/* 更新常量缓冲区 */
 	//首先获得指向欲更新资源数据的指针
@@ -354,6 +376,94 @@ void Draw()
 
 	//等待绘制此帧的一系列命令执行完毕
 	FlushCommandQueue();
+}
+void OnResize()
+{
+	// Flush before changing any resources.
+	FlushCommandQueue();
+
+	ThrowIfFailed(commandList->Reset(commandAllocator.Get(), nullptr));
+
+	// Release the previous resources we will be recreating.
+	for (int i = 0; i < SwapChainBufferCount; ++i)
+		SwapChainBuffer[i].Reset();
+	depthStencilBuffer.Reset();
+
+	// Resize the swap chain.
+	ThrowIfFailed(swapChain->ResizeBuffers(
+		SwapChainBufferCount,
+		width, height,
+		BackBufferFormat,
+		DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH));
+
+	currBackBuffer = 0;
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHeapHandle(rtvHeap->GetCPUDescriptorHandleForHeapStart());
+	for (UINT i = 0; i < SwapChainBufferCount; i++)
+	{
+		ThrowIfFailed(swapChain->GetBuffer(i, IID_PPV_ARGS(&SwapChainBuffer[i])));
+		d3dDevice->CreateRenderTargetView(SwapChainBuffer[i].Get(), nullptr, rtvHeapHandle);
+		rtvHeapHandle.Offset(1, rtvDescriptorSize);
+	}
+
+	// Create the depth/stencil buffer and view.
+	D3D12_RESOURCE_DESC depthStencilDesc;
+	depthStencilDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	depthStencilDesc.Alignment = 0;
+	depthStencilDesc.Width = width;
+	depthStencilDesc.Height = height;
+	depthStencilDesc.DepthOrArraySize = 1;
+	depthStencilDesc.MipLevels = 1;
+	depthStencilDesc.Format = DepthStencilFormat;
+	depthStencilDesc.SampleDesc.Count = msaaState ? 4 : 1;
+	depthStencilDesc.SampleDesc.Quality = msaaState ? (msaaQuality - 1) : 0;
+	depthStencilDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	depthStencilDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+
+	D3D12_CLEAR_VALUE optClear;
+	optClear.Format = DepthStencilFormat;
+	optClear.DepthStencil.Depth = 1.0f;
+	optClear.DepthStencil.Stencil = 0;
+	CD3DX12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+	ThrowIfFailed(d3dDevice->CreateCommittedResource(
+		&heapProps,
+		D3D12_HEAP_FLAG_NONE,
+		&depthStencilDesc,
+		D3D12_RESOURCE_STATE_COMMON,
+		&optClear,
+		IID_PPV_ARGS(depthStencilBuffer.GetAddressOf())));
+
+	// Create descriptor to mip level 0 of entire resource using the format of the resource.
+	d3dDevice->CreateDepthStencilView(depthStencilBuffer.Get(), nullptr, dsvHeap->GetCPUDescriptorHandleForHeapStart());
+
+	// Transition the resource from its initial state to be used as a depth buffer.
+	auto Barrier = CD3DX12_RESOURCE_BARRIER::Transition(depthStencilBuffer.Get(),
+		D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_DEPTH_WRITE);
+	commandList->ResourceBarrier(1, &Barrier);
+
+	// Execute the resize commands.
+	ThrowIfFailed(commandList->Close());
+	ID3D12CommandList* cmdsLists[] = { commandList.Get() };
+	commandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
+
+	// Wait until resize is complete.
+	FlushCommandQueue();
+
+	// Update the viewport transform to cover the client area.
+	ScreenViewport.TopLeftX = 0;
+	ScreenViewport.TopLeftY = 0;
+	ScreenViewport.Width = static_cast<float>(width);
+	ScreenViewport.Height = static_cast<float>(height);
+	ScreenViewport.MinDepth = 0.0f;
+	ScreenViewport.MaxDepth = 1.0f;
+
+	ScissorRect = { 0, 0, width, height };
+
+	/* 更新纵横比，重新计算投影矩阵 */
+	//这里解决了拉伸的问题
+	float AspectRatio = static_cast<float>(width) / height;
+	XMMATRIX P = XMMatrixPerspectiveFovLH(XM_PI/4.0f, AspectRatio, 1.0f, 1000.0f);
+	XMStoreFloat4x4(&matProj, P);
 }
 void CreateCommandObjects()
 {
@@ -734,9 +844,82 @@ LRESULT CALLBACK WindowProcess(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 			//mTimer.Start();
 		}
 		return 0;
+
+	/* 用户调整窗口大小时便会产生此消息 */
+	case WM_SIZE:
+		// Save the new client area dimensions.
+		width = LOWORD(lParam);
+		height = HIWORD(lParam);
+		if (d3dDevice)
+		{
+			if (wParam == SIZE_MINIMIZED)
+			{
+				Paused = true;
+				Minimized = true;
+				Maximized = false;
+			}
+			else if (wParam == SIZE_MAXIMIZED)
+			{
+				Paused = false;
+				Minimized = false;
+				Maximized = true;
+				OnResize();
+			}
+			else if (wParam == SIZE_RESTORED)
+			{
+
+				// Restoring from minimized state?
+				if (Minimized)
+				{
+					Paused = false;
+					Minimized = false;
+					OnResize();
+				}
+
+				// Restoring from maximized state?
+				else if (Maximized)
+				{
+					Paused = false;
+					Maximized = false;
+					OnResize();
+				}
+				else if (Resizing)
+				{
+					// If user is dragging the resize bars, we do not resize 
+					// the buffers here because as the user continuously 
+					// drags the resize bars, a stream of WM_SIZE messages are
+					// sent to the window, and it would be pointless (and slow)
+					// to resize for each WM_SIZE message received from dragging
+					// the resize bars.  So instead, we reset after the user is 
+					// done resizing the window and releases the resize bars, which 
+					// sends a WM_EXITSIZEMOVE message.
+				}
+				else // API call such as SetWindowPos or mSwapChain->SetFullscreenState.
+				{
+					OnResize();
+				}
+			}
+		}
+		return 0;
+
+		// WM_EXITSIZEMOVE is sent when the user grabs the resize bars.
+	case WM_ENTERSIZEMOVE:
+		Paused = true;
+		Resizing = true;
+		return 0;
+
+		// WM_EXITSIZEMOVE is sent when the user releases the resize bars.
+		// Here we reset everything based on the new window dimensions.
+	case WM_EXITSIZEMOVE:
+		Paused = false;
+		Resizing = false;
+		OnResize();
+		return 0;
+
 	/* 处理与鼠标相关的消息 */
 	case WM_LBUTTONDOWN:
-		MessageBox(0, L"DrawGeometry", L"DrawGeometry", MB_OK);
+		//MessageBox(0, L"DrawGeometry", L"DrawGeometry", MB_OK);
+
 		return 0;
 	
 	case WM_MBUTTONDOWN:
@@ -749,7 +932,7 @@ LRESULT CALLBACK WindowProcess(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 		//OnMouseUp(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
 		return 0;
 	case WM_MOUSEMOVE:
-		//OnMouseMove(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+		OnMouseMove(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
 		return 0;
 
 	case WM_KEYDOWN:
@@ -762,4 +945,49 @@ LRESULT CALLBACK WindowProcess(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 
 	}
 	return DefWindowProc(hwnd, msg, wParam, lParam);
+}
+
+void OnMouseDown(WPARAM btnState, int x, int y)
+{
+	LastMousePos.x = x;
+	LastMousePos.y = y;
+
+	SetCapture(MainWindow);    //捕获当前窗口的鼠标
+}
+
+void OnMouseUp(WPARAM btnState, int x, int y)
+{
+	ReleaseCapture();    //释放鼠标捕获
+}
+
+void OnMouseMove(WPARAM btnState, int x, int y)
+{
+	if ((btnState & MK_LBUTTON) != 0)
+	{
+		// Make each pixel correspond to a quarter of a degree.
+		float dx = XMConvertToRadians(1.0f * static_cast<float>(x - LastMousePos.x));
+		float dy = XMConvertToRadians(1.0f * static_cast<float>(y - LastMousePos.y));
+
+		// Update angles based on input to orbit camera around box.
+		mTheta -= dx;
+		mPhi -= dy;
+
+		// Restrict the angle mPhi.
+		mPhi = Clamp<float>(mPhi, 0.1f, XM_PI - 0.1f);
+	}
+	//else if ((btnState & MK_RBUTTON) != 0)
+	//{
+	//	// Make each pixel correspond to 0.005 unit in the scene.
+	//	float dx = 0.005f * static_cast<float>(x - mLastMousePos.x);
+	//	float dy = 0.005f * static_cast<float>(y - mLastMousePos.y);
+
+	//	// Update the camera radius based on input.
+	//	mRadius += dx - dy;
+
+	//	// Restrict the radius.
+	//	mRadius = MathHelper::Clamp(mRadius, 3.0f, 15.0f);
+	//}
+
+	LastMousePos.x = x;
+	LastMousePos.y = y;
 }

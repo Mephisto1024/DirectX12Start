@@ -36,8 +36,8 @@ using namespace Microsoft::WRL;
 bool msaaState = false;    // 4X MSAA enabled
 UINT msaaQuality = 0;      // quality level of 4X MSAA
 
-int width = 800;
-int height = 600;
+int width = 1280;
+int height = 720;
 const int SwapChainBufferCount = 2;
 int currBackBuffer = 0;
 UINT rtvDescriptorSize = 0;
@@ -49,6 +49,10 @@ D3D12_VIEWPORT ScreenViewport;
 D3D12_RECT ScissorRect;
 /* Win32 */
 bool Paused = false;
+bool Minimized = false;  // is the application minimized?
+bool Maximized = false;  // is the application maximized?
+bool Resizing = false;   // are the resize bars being dragged?
+POINT LastMousePos;
 
  std::wstring AnsiToWString(const std::string& str)
 {
@@ -232,3 +236,22 @@ ComPtr<ID3DBlob> CompileShader(
     return byteCode;
 }
 
+/* Math */
+const float Pi = 3.1415926535f;
+
+DirectX::XMFLOAT4X4 Identity4x4()
+{
+    static DirectX::XMFLOAT4X4 I(
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f,
+        0.0f, 0.0f, 0.0f, 1.0f);
+
+    return I;
+}
+
+template<typename T>
+static T Clamp(const T& x, const T& low, const T& high)
+{
+    return x < low ? low : (x > high ? high : x);
+}
