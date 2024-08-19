@@ -11,6 +11,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "InitializeDirectX12", "..\I
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DrawGeometry", "..\DrawGeometry\DrawGeometry.vcxproj", "{41B1EDC8-F409-4469-AC2A-E940B888A532}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DrawMulGeometry", "..\DrawMulGeometry\DrawMulGeometry.vcxproj", "{504918FE-62E4-4E99-9746-3D82E44B9B43}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -51,6 +53,14 @@ Global
 		{41B1EDC8-F409-4469-AC2A-E940B888A532}.Release|x64.Build.0 = Release|x64
 		{41B1EDC8-F409-4469-AC2A-E940B888A532}.Release|x86.ActiveCfg = Release|Win32
 		{41B1EDC8-F409-4469-AC2A-E940B888A532}.Release|x86.Build.0 = Release|Win32
+		{504918FE-62E4-4E99-9746-3D82E44B9B43}.Debug|x64.ActiveCfg = Debug|x64
+		{504918FE-62E4-4E99-9746-3D82E44B9B43}.Debug|x64.Build.0 = Debug|x64
+		{504918FE-62E4-4E99-9746-3D82E44B9B43}.Debug|x86.ActiveCfg = Debug|Win32
+		{504918FE-62E4-4E99-9746-3D82E44B9B43}.Debug|x86.Build.0 = Debug|Win32
+		{504918FE-62E4-4E99-9746-3D82E44B9B43}.Release|x64.ActiveCfg = Release|x64
+		{504918FE-62E4-4E99-9746-3D82E44B9B43}.Release|x64.Build.0 = Release|x64
+		{504918FE-62E4-4E99-9746-3D82E44B9B43}.Release|x86.ActiveCfg = Release|Win32
+		{504918FE-62E4-4E99-9746-3D82E44B9B43}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
