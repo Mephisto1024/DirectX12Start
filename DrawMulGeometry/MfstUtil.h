@@ -3,6 +3,52 @@
 #include <wrl.h>
 #include <d3d12.h>
 #include <memory>
+#include<comdef.h>    //_com_error
+#include<string>
+
+#include "d3dx12.h"
+/* Debug */
+
+#ifndef ThrowIfFailed
+#define ThrowIfFailed(x)                                              \
+{                                                                     \
+    HRESULT hr__ = (x);                                               \
+    std::wstring wfn = AnsiToWString(__FILE__);                       \
+    if(FAILED(hr__)) { throw DxException(hr__, L#x, wfn, __LINE__); } \
+}
+#endif
+
+std::wstring AnsiToWString(const std::string& str)
+{
+    WCHAR buffer[512];
+    MultiByteToWideChar(CP_ACP, 0, str.c_str(), -1, buffer, 512);
+    return std::wstring(buffer);
+}
+
+class DxException
+{
+public:
+    DxException() = default;
+    DxException(HRESULT hr, const std::wstring& functionName, const std::wstring& filename, int lineNumber)
+        : ErrorCode(hr), FunctionName(functionName), Filename(filename), LineNumber(lineNumber)
+    {
+    }
+
+    HRESULT ErrorCode = S_OK;
+    std::wstring FunctionName;
+    std::wstring Filename;
+    int LineNumber = -1;
+
+    std::wstring ToString()const
+    {
+        // Get the string description of the error code.
+        _com_error err(ErrorCode);
+        std::wstring msg = err.ErrorMessage();
+
+        return FunctionName + L" failed in " + Filename + L"; line " + std::to_wstring(LineNumber) + L"; error: " + msg;
+    }
+};
+
 struct Mesh
 {
     Microsoft::WRL::ComPtr<ID3DBlob> VertexBufferCPU = nullptr;
@@ -45,6 +91,8 @@ struct Mesh
         return ibv;
     }
 };
+
+/* */
 template<typename T>
 class UploadBuffer
 {
@@ -62,7 +110,7 @@ public:
         // UINT   SizeInBytes;   // multiple of 256
         // } D3D12_CONSTANT_BUFFER_VIEW_DESC;
         if (isConstantBuffer)
-            mElementByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(T));
+            mElementByteSize = CalcConstantBufferByteSize(sizeof(T));
 
         ThrowIfFailed(device->CreateCommittedResource(
             &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
@@ -105,6 +153,10 @@ private:
     UINT mElementByteSize = 0;
     bool mIsConstantBuffer = false;
 };
+static UINT CalcConstantBufferByteSize(UINT byteSize)
+{
+    return (byteSize + 255) & ~255;
+}
 /* Math */
 DirectX::XMFLOAT4X4 Identity4x4()
 {

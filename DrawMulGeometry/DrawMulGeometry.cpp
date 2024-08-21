@@ -1,5 +1,6 @@
 ﻿#include"DrawMulGeometry.h"
-//#include"FrameResource.h"
+
+#include"FrameResource.h"
 #include"GeometryGenerator.h"
 #include <DirectXColors.h>
 #include < WindowsX.h >
@@ -36,9 +37,39 @@ void BuildRootSignature();
 void BuildShadersAndInputLayout();
 void BuildGeometry();
 void BuildPSO();
+void BuildFrameResources();
 
 void PopulateCommandList();
+//add for frameresource
+const int NumFrameResources = 3;
+struct RenderItem
+{
+	RenderItem() = default;
 
+	// World matrix of the shape that describes the object's local space
+	// relative to the world space, which defines the position, orientation,
+	// and scale of the object in the world.
+	XMFLOAT4X4 World = Identity4x4();
+
+	// Dirty flag indicating the object data has changed and we need to update the constant buffer.
+	// Because we have an object cbuffer for each FrameResource, we have to apply the
+	// update to each FrameResource.  Thus, when we modify obect data we should set 
+	// NumFramesDirty = gNumFrameResources so that each frame resource gets the update.
+	int NumFramesDirty = NumFrameResources;
+
+	// Index into GPU constant buffer corresponding to the ObjectCB for this render item.
+	UINT ObjCBIndex = -1;
+
+	Mesh* Geo = nullptr;
+
+	// Primitive topology.
+	D3D12_PRIMITIVE_TOPOLOGY PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+
+	// DrawIndexedInstanced parameters.
+	UINT IndexCount = 0;
+	UINT StartIndexLocation = 0;
+	int BaseVertexLocation = 0;
+};
 /* Win32 */
 LRESULT CALLBACK //__stdcall
 WindowProcess(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -65,6 +96,9 @@ ComPtr<ID3DBlob> VSByteCode = nullptr;
 ComPtr<ID3DBlob> PSByteCode = nullptr;
 ComPtr<ID3D12PipelineState> PSO = nullptr;
 
+std::vector<std::unique_ptr<RenderItem>> RenderItems;
+PassConstants MainPassCBuffer;
+
 XMFLOAT4X4 matModel = Identity4x4();
 XMFLOAT4X4 matView = Identity4x4();
 XMFLOAT4X4 matProj = Identity4x4();
@@ -77,50 +111,21 @@ std::vector<D3D12_INPUT_ELEMENT_DESC> InputElementDescs;
 std::unique_ptr<Mesh> mesh = nullptr;
 ComPtr<ID3D12Resource> ObjectConstantBuffer; BYTE* MappedData = nullptr;
 UINT IndexCount = 0;
-const int gNumFrameResources = 3;
 
-struct Vertex
-{
-	DirectX::XMFLOAT3 Pos;
-	DirectX::XMFLOAT4 Color;
-};
+//add for frameresource
+std::vector<std::unique_ptr<FrameResource>> FrameResources;
+FrameResource* CurrFrameResource = nullptr;
+int CurrFrameResourceIndex = 0;
 
-struct ObjectConstants
-{
-	XMFLOAT4X4 WorldViewProj = XMFLOAT4X4(
-		1.0f, 0.0f, 0.0f, 0.0f,
-		0.0f, 1.0f, 0.0f, 0.0f,
-		0.0f, 0.0f, 1.0f, 0.0f,
-		0.0f, 0.0f, 0.0f, 1.0f);
-};
-struct RenderItem
-{
-	RenderItem() = default;
+//struct ObjectConstants
+//{
+//	XMFLOAT4X4 WorldViewProj = XMFLOAT4X4(
+//		1.0f, 0.0f, 0.0f, 0.0f,
+//		0.0f, 1.0f, 0.0f, 0.0f,
+//		0.0f, 0.0f, 1.0f, 0.0f,
+//		0.0f, 0.0f, 0.0f, 1.0f);
+//};
 
-	// World matrix of the shape that describes the object's local space
-	// relative to the world space, which defines the position, orientation,
-	// and scale of the object in the world.
-	XMFLOAT4X4 World = Identity4x4();
-
-	// Dirty flag indicating the object data has changed and we need to update the constant buffer.
-	// Because we have an object cbuffer for each FrameResource, we have to apply the
-	// update to each FrameResource.  Thus, when we modify obect data we should set 
-	// NumFramesDirty = gNumFrameResources so that each frame resource gets the update.
-	int NumFramesDirty = gNumFrameResources;
-
-	// Index into GPU constant buffer corresponding to the ObjectCB for this render item.
-	UINT ObjCBIndex = -1;
-
-	Mesh* Geo = nullptr;
-
-	// Primitive topology.
-	D3D12_PRIMITIVE_TOPOLOGY PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-
-	// DrawIndexedInstanced parameters.
-	UINT IndexCount = 0;
-	UINT StartIndexLocation = 0;
-	int BaseVertexLocation = 0;
-};
 
 int WINAPI    //__stdcall,参数从右向左压入堆栈
 WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPSTR lpCmdLine, _In_ int nShowCmd)
@@ -368,26 +373,64 @@ void Update()
 	XMMATRIX view = XMMatrixLookAtLH(pos, target, up);
 	XMStoreFloat4x4(&matView, view);
 
-	XMMATRIX world = XMLoadFloat4x4(&matModel);
+	// 循环获取帧资源数组中的元素
+	CurrFrameResourceIndex = (CurrFrameResourceIndex + 1) % NumFrameResources;
+	CurrFrameResource = FrameResources[CurrFrameResourceIndex].get();
+
+	// 检查GPU是否执行完处理当前帧资源的所有命令
+	// 如果没有，就令CPU等待
+	if (CurrFrameResource->Fence != 0 && fence->GetCompletedValue() < CurrFrameResource->Fence)
+	{
+		HANDLE eventHandle = CreateEventEx(nullptr, nullptr, false, EVENT_ALL_ACCESS);
+		ThrowIfFailed(fence->SetEventOnCompletion(CurrFrameResource->Fence, eventHandle));
+		WaitForSingleObject(eventHandle, INFINITE);
+		CloseHandle(eventHandle);
+	}
+
+	/* 更新当前的 帧资源 */
+
+	/* 更新物体的cbuffer */
+	auto currObjectCB = CurrFrameResource->ObjectCB.get();
+	for (auto& e : RenderItems)
+	{
+		// Only update the cbuffer data if the constants have changed.  
+		// This needs to be tracked per frame resource.
+		if (e->NumFramesDirty > 0)
+		{
+			XMMATRIX world = XMLoadFloat4x4(&e->World);
+
+			ObjectConstants objConstants;
+			XMStoreFloat4x4(&objConstants.World, XMMatrixTranspose(world));
+
+			currObjectCB->CopyData(e->ObjCBIndex, objConstants);
+
+			// Next FrameResource need to be updated too.
+			e->NumFramesDirty--;
+		}
+	}
+	/* 更新帧的cbuffer */
+	XMMATRIX matview = XMLoadFloat4x4(&matView);
 	XMMATRIX proj = XMLoadFloat4x4(&matProj);
-	XMMATRIX worldViewProj = world * view * proj;
 
-	ObjectConstants objConstants;
-	//objConstants.WorldViewProj = worldViewProj;
-	XMStoreFloat4x4(&objConstants.WorldViewProj, XMMatrixTranspose(worldViewProj));
+	XMMATRIX viewProj = XMMatrixMultiply(view, proj);
 
-	/* 更新常量缓冲区 */
-	//首先获得指向欲更新资源数据的指针
-	ThrowIfFailed(ObjectConstantBuffer->Map(0, nullptr, reinterpret_cast<void**>(&MappedData)));
+	XMStoreFloat4x4(&MainPassCBuffer.View, XMMatrixTranspose(view));
+	XMStoreFloat4x4(&MainPassCBuffer.Proj, XMMatrixTranspose(proj));
+	XMStoreFloat4x4(&MainPassCBuffer.ViewProj, XMMatrixTranspose(viewProj));
 
-	//利用memcpy函数将数据从系统内存复制到常量缓冲区
-	memcpy(MappedData, &objConstants, sizeof(ObjectConstants));
-	
-	//完成后，依次取消映射，释放映射内存
-	if (ObjectConstantBuffer != nullptr)
-		ObjectConstantBuffer->Unmap(0, nullptr);
+	auto currPassCB = CurrFrameResource->PassCB.get();
+	currPassCB->CopyData(0, MainPassCBuffer);
+	////首先获得指向欲更新资源数据的指针
+	//ThrowIfFailed(ObjectConstantBuffer->Map(0, nullptr, reinterpret_cast<void**>(&MappedData)));
 
-	MappedData = nullptr;
+	////利用memcpy函数将数据从系统内存复制到常量缓冲区
+	//memcpy(MappedData, &objConstants, sizeof(ObjectConstants));
+	//
+	////完成后，依次取消映射，释放映射内存
+	//if (ObjectConstantBuffer != nullptr)
+	//	ObjectConstantBuffer->Unmap(0, nullptr);
+
+	//MappedData = nullptr;
 
 }
 void Draw()
@@ -404,7 +447,15 @@ void Draw()
 	currBackBuffer = (currBackBuffer + 1) % SwapChainBufferCount;
 
 	//等待绘制此帧的一系列命令执行完毕
-	FlushCommandQueue();
+	//FlushCommandQueue();
+
+	// Advance the fence value to mark commands up to this fence point.
+	CurrFrameResource->Fence = ++CurrentFence;
+
+	// Add an instruction to the command queue to set a new fence point. 
+	// Because we are on the GPU timeline, the new fence point won't be 
+	// set until the GPU finishes processing all the commands prior to this Signal().
+	commandQueue->Signal(fence.Get(), CurrentFence);
 }
 void OnResize()
 {
@@ -716,6 +767,14 @@ void BuildPSO()
 	psoDesc.SampleDesc.Quality = msaaState ? (msaaQuality - 1) : 0;
 	psoDesc.DSVFormat = DepthStencilFormat;
 	ThrowIfFailed(d3dDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&PSO)));
+}
+void BuildFrameResources()
+{
+	for (int i = 0; i < NumFrameResources; ++i)
+	{
+		FrameResources.push_back(std::make_unique<FrameResource>(d3dDevice.Get(),
+			1, (UINT)RenderItems.size()));
+	}
 }
 void BuildConstantBuffers()
 {

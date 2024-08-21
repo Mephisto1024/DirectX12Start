@@ -31,8 +31,7 @@ struct Vertex
     DirectX::XMFLOAT4 Color;
 };
 
-// Stores the resources needed for the CPU to build the command lists
-// for a frame.  
+// 存储CPU构建每帧的命令列表所需的资源
 struct FrameResource
 {
 public:
@@ -42,16 +41,27 @@ public:
     FrameResource& operator=(const FrameResource& rhs) = delete;
     ~FrameResource();
 
-    // We cannot reset the allocator until the GPU is done processing the commands.
-    // So each frame needs their own allocator.
+    // 在GPU完成命令处理之前，我们无法重置分配器。所以每个帧都需要自己的分配器。
     Microsoft::WRL::ComPtr<ID3D12CommandAllocator> CmdListAlloc;
 
-    // We cannot update a cbuffer until the GPU is done processing the commands
-    // that reference it.  So each frame needs their own cbuffers.
+    // 在GPU完成对引用它的命令的处理之前，我们不能更新cbuffer。所以每一帧都需要自己的cbuffer。
     std::unique_ptr<UploadBuffer<PassConstants>> PassCB = nullptr;
     std::unique_ptr<UploadBuffer<ObjectConstants>> ObjectCB = nullptr;
 
-    // Fence value to mark commands up to this fence point.  This lets us
-    // check if these frame resources are still in use by the GPU.
+    // 通过栅栏值，将命令标记到此栅栏点。这让我们可以检查这些帧资源是否仍在被GPU使用。
     UINT64 Fence = 0;
 };
+//FrameResource::FrameResource(ID3D12Device* device, UINT passCount, UINT objectCount)
+//{
+//    ThrowIfFailed(device->CreateCommandAllocator(
+//        D3D12_COMMAND_LIST_TYPE_DIRECT,
+//        IID_PPV_ARGS(CmdListAlloc.GetAddressOf())));
+//
+//    PassCB = std::make_unique<UploadBuffer<PassConstants>>(device, passCount, true);
+//    ObjectCB = std::make_unique<UploadBuffer<ObjectConstants>>(device, objectCount, true);
+//}
+
+FrameResource::~FrameResource()
+{
+
+}
