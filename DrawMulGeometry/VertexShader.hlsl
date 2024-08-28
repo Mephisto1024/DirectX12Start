@@ -1,6 +1,12 @@
 cbuffer cbPerObject : register(b0)
 {
-    float4x4 mvp;
+    float4x4 matModel;
+}
+cbuffer cbPass : register(b1)
+{
+    float4x4 matView;
+    float4x4 matProj;
+    float4x4 matViewProj;
 }
 struct VertexIn
 {
@@ -16,7 +22,9 @@ VertexOut main(VertexIn vin)
 {
     VertexOut vout;
     
-    vout.PosH = mul(float4(vin.PosL, 1.0f), mvp);
+    // Transform to homogeneous clip space.
+    float4 posW = mul(float4(vin.PosL, 1.0f), matModel);
+    vout.PosH = mul(posW, matViewProj);
     
     vout.Color = vin.Color;
     
