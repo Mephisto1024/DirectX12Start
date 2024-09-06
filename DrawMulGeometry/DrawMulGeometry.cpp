@@ -38,6 +38,9 @@ void BuildShadersAndInputLayout();
 void BuildGeometry();
 void BuildPSO();
 void BuildFrameResources();
+void BuildRenderItems();
+void BuildDescriptorHeaps();
+
 
 void PopulateCommandList();
 //add for frameresource
@@ -70,6 +73,7 @@ struct RenderItem
 	UINT StartIndexLocation = 0;
 	int BaseVertexLocation = 0;
 };
+void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems);
 /* Win32 */
 LRESULT CALLBACK //__stdcall
 WindowProcess(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -98,6 +102,7 @@ ComPtr<ID3D12PipelineState> PSO = nullptr;
 
 std::vector<std::unique_ptr<RenderItem>> RenderItems;
 PassConstants MainPassCBuffer;
+std::unordered_map<std::string, std::unique_ptr<Mesh>> Geometries;
 // 根据PSO来划分渲染项
 std::vector<RenderItem*> OpaqueRenderItems;    // 不透明
 
@@ -111,13 +116,14 @@ float mRadius = 5.0f;
 
 std::vector<D3D12_INPUT_ELEMENT_DESC> InputElementDescs;
 std::unique_ptr<Mesh> mesh = nullptr;
-ComPtr<ID3D12Resource> ObjectConstantBuffer; BYTE* MappedData = nullptr;
+//ComPtr<ID3D12Resource> ObjectConstantBuffer; BYTE* MappedData = nullptr;
 UINT IndexCount = 0;
 
 //add for frameresource
 std::vector<std::unique_ptr<FrameResource>> FrameResources;
 FrameResource* CurrFrameResource = nullptr;
 int CurrFrameResourceIndex = 0;
+UINT PassCbvOffset = 0;
 
 //struct ObjectConstants
 //{
@@ -231,6 +237,7 @@ bool InitDirect3D()
 	/*第二步：创建围栏并获取描述符大小*/
 	ThrowIfFailed(d3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence)));
 	rtvDescriptorSize = d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+	CbvUavDescriptorSize = d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	/*第三步：检测MSAA支持*/
 	/*第四步：创建命令队列，命令列表分配器，命令列表*/
 	CreateCommandObjects();
@@ -324,10 +331,14 @@ bool Initialize(HINSTANCE instanceHandle, int show)
 	// 重置命令列表
 	ThrowIfFailed(commandList->Reset(commandAllocator.Get(), nullptr));
 
-	BuildConstantBuffers();
+	
 	BuildRootSignature();
 	BuildShadersAndInputLayout();
 	BuildGeometry();
+	BuildRenderItems();
+	BuildFrameResources();
+	BuildDescriptorHeaps();
+	BuildConstantBuffers();
 	BuildPSO();
 
 	// 执行初始化命令
@@ -414,9 +425,9 @@ void Update()
 	XMMATRIX matview = XMLoadFloat4x4(&matView);
 	XMMATRIX proj = XMLoadFloat4x4(&matProj);
 
-	XMMATRIX viewProj = XMMatrixMultiply(view, proj);
+	XMMATRIX viewProj = XMMatrixMultiply(matview, proj);
 
-	XMStoreFloat4x4(&MainPassCBuffer.View, XMMatrixTranspose(view));
+	XMStoreFloat4x4(&MainPassCBuffer.View, XMMatrixTranspose(matview));
 	XMStoreFloat4x4(&MainPassCBuffer.Proj, XMMatrixTranspose(proj));
 	XMStoreFloat4x4(&MainPassCBuffer.ViewProj, XMMatrixTranspose(viewProj));
 
@@ -793,7 +804,7 @@ void BuildGeometry()
 	geo->DrawArgs["sphere"] = sphereSubmesh;
 	geo->DrawArgs["cylinder"] = cylinderSubmesh;
 
-	mGeometries[geo->Name] = std::move(geo);
+	Geometries[geo->Name] = std::move(geo);
 
 	IndexCount = (UINT)indices.size();
 }
@@ -833,45 +844,180 @@ void BuildFrameResources()
 			1, (UINT)RenderItems.size()));
 	}
 }
-void BuildConstantBuffers()
+void BuildRenderItems()
 {
-	//创建常量缓冲区，常量缓冲区对大小有要求
-	UINT ConstantBufferByteSize = CalcConstantBufferByteSize(sizeof(ObjectConstants));
-	UINT elementCount = 1;
+	auto boxRitem = std::make_unique<RenderItem>();
+	XMStoreFloat4x4(&boxRitem->World, XMMatrixScaling(2.0f, 2.0f, 2.0f) * XMMatrixTranslation(0.0f, 0.5f, 0.0f));
+	boxRitem->ObjCBIndex = 0;
+	boxRitem->Geo = Geometries["shapeGeo"].get();
+	boxRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	boxRitem->IndexCount = boxRitem->Geo->DrawArgs["box"].IndexCount;
+	boxRitem->StartIndexLocation = boxRitem->Geo->DrawArgs["box"].StartIndexLocation;
+	boxRitem->BaseVertexLocation = boxRitem->Geo->DrawArgs["box"].BaseVertexLocation;
+	RenderItems.push_back(std::move(boxRitem));
 
-	auto heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-	auto desc = CD3DX12_RESOURCE_DESC::Buffer(ConstantBufferByteSize * elementCount);
-	ThrowIfFailed(d3dDevice->CreateCommittedResource(
-		&heapProps,
-		D3D12_HEAP_FLAG_NONE,
-		&desc,
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&ObjectConstantBuffer)));
-	
-	ThrowIfFailed(ObjectConstantBuffer->Map(0, nullptr, reinterpret_cast<void**>(&MappedData)));
+	auto gridRitem = std::make_unique<RenderItem>();
+	gridRitem->World = Identity4x4();
+	gridRitem->ObjCBIndex = 1;
+	gridRitem->Geo = Geometries["shapeGeo"].get();
+	gridRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	gridRitem->IndexCount = gridRitem->Geo->DrawArgs["grid"].IndexCount;
+	gridRitem->StartIndexLocation = gridRitem->Geo->DrawArgs["grid"].StartIndexLocation;
+	gridRitem->BaseVertexLocation = gridRitem->Geo->DrawArgs["grid"].BaseVertexLocation;
+	RenderItems.push_back(std::move(gridRitem));
 
-	//获得常量缓冲区的起始地址
-	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = ObjectConstantBuffer->GetGPUVirtualAddress();
+	UINT objCBIndex = 2;
+	for (int i = 0; i < 5; ++i)
+	{
+		auto leftCylRitem = std::make_unique<RenderItem>();
+		auto rightCylRitem = std::make_unique<RenderItem>();
+		auto leftSphereRitem = std::make_unique<RenderItem>();
+		auto rightSphereRitem = std::make_unique<RenderItem>();
 
-	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};    //描述cb子集而不是整个cb
-	cbvDesc.BufferLocation = cbAddress;
-	cbvDesc.SizeInBytes = CalcConstantBufferByteSize(sizeof(ObjectConstants));
+		XMMATRIX leftCylWorld = XMMatrixTranslation(-5.0f, 1.5f, -10.0f + i * 5.0f);
+		XMMATRIX rightCylWorld = XMMatrixTranslation(+5.0f, 1.5f, -10.0f + i * 5.0f);
 
-	//创建cb描述符堆
-	D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc = {};
-	cbvHeapDesc.NumDescriptors = 1;
+		XMMATRIX leftSphereWorld = XMMatrixTranslation(-5.0f, 3.5f, -10.0f + i * 5.0f);
+		XMMATRIX rightSphereWorld = XMMatrixTranslation(+5.0f, 3.5f, -10.0f + i * 5.0f);
+
+		XMStoreFloat4x4(&leftCylRitem->World, rightCylWorld);
+		leftCylRitem->ObjCBIndex = objCBIndex++;
+		leftCylRitem->Geo = Geometries["shapeGeo"].get();
+		leftCylRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+		leftCylRitem->IndexCount = leftCylRitem->Geo->DrawArgs["cylinder"].IndexCount;
+		leftCylRitem->StartIndexLocation = leftCylRitem->Geo->DrawArgs["cylinder"].StartIndexLocation;
+		leftCylRitem->BaseVertexLocation = leftCylRitem->Geo->DrawArgs["cylinder"].BaseVertexLocation;
+
+		XMStoreFloat4x4(&rightCylRitem->World, leftCylWorld);
+		rightCylRitem->ObjCBIndex = objCBIndex++;
+		rightCylRitem->Geo = Geometries["shapeGeo"].get();
+		rightCylRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+		rightCylRitem->IndexCount = rightCylRitem->Geo->DrawArgs["cylinder"].IndexCount;
+		rightCylRitem->StartIndexLocation = rightCylRitem->Geo->DrawArgs["cylinder"].StartIndexLocation;
+		rightCylRitem->BaseVertexLocation = rightCylRitem->Geo->DrawArgs["cylinder"].BaseVertexLocation;
+
+		XMStoreFloat4x4(&leftSphereRitem->World, leftSphereWorld);
+		leftSphereRitem->ObjCBIndex = objCBIndex++;
+		leftSphereRitem->Geo = Geometries["shapeGeo"].get();
+		leftSphereRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+		leftSphereRitem->IndexCount = leftSphereRitem->Geo->DrawArgs["sphere"].IndexCount;
+		leftSphereRitem->StartIndexLocation = leftSphereRitem->Geo->DrawArgs["sphere"].StartIndexLocation;
+		leftSphereRitem->BaseVertexLocation = leftSphereRitem->Geo->DrawArgs["sphere"].BaseVertexLocation;
+
+		XMStoreFloat4x4(&rightSphereRitem->World, rightSphereWorld);
+		rightSphereRitem->ObjCBIndex = objCBIndex++;
+		rightSphereRitem->Geo = Geometries["shapeGeo"].get();
+		rightSphereRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+		rightSphereRitem->IndexCount = rightSphereRitem->Geo->DrawArgs["sphere"].IndexCount;
+		rightSphereRitem->StartIndexLocation = rightSphereRitem->Geo->DrawArgs["sphere"].StartIndexLocation;
+		rightSphereRitem->BaseVertexLocation = rightSphereRitem->Geo->DrawArgs["sphere"].BaseVertexLocation;
+
+		RenderItems.push_back(std::move(leftCylRitem));
+		RenderItems.push_back(std::move(rightCylRitem));
+		RenderItems.push_back(std::move(leftSphereRitem));
+		RenderItems.push_back(std::move(rightSphereRitem));
+	}
+
+	// All the render items are opaque.
+	for (auto& e : RenderItems)
+		OpaqueRenderItems.push_back(e.get());
+}
+void BuildDescriptorHeaps()
+{
+	//统计一共要渲染的物体个数
+	UINT objCount = (UINT)OpaqueRenderItems.size();
+
+	// 计算要创建的描述符个数，每个帧资源中的每个物体还有pass都需要创建cbv描述符
+	UINT numDescriptors = (objCount + 1) * NumFrameResources;
+
+	// 计算pass cbv的起始偏移量
+	PassCbvOffset = objCount * NumFrameResources;
+
+	D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc;
+	cbvHeapDesc.NumDescriptors = numDescriptors;
 	cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	cbvHeapDesc.NodeMask = 0;
-
 	ThrowIfFailed(d3dDevice->CreateDescriptorHeap(&cbvHeapDesc,
 		IID_PPV_ARGS(&CbvHeap)));
+}
 
-	//创建cb视图
-	d3dDevice->CreateConstantBufferView(
-		&cbvDesc,
-		CbvHeap->GetCPUDescriptorHandleForHeapStart());
+void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems)
+{
+	UINT objCBByteSize = CalcConstantBufferByteSize(sizeof(ObjectConstants));
+
+	auto objectCB = CurrFrameResource->ObjectCB->Resource();
+
+	// For each render item...
+	for (size_t i = 0; i < ritems.size(); ++i)
+	{
+		auto ri = ritems[i];
+		D3D12_VERTEX_BUFFER_VIEW VertexBufferView = ri->Geo->VertexBufferView();
+		D3D12_INDEX_BUFFER_VIEW IndexBufferView = ri->Geo->IndexBufferView();
+		cmdList->IASetVertexBuffers(0, 1,&VertexBufferView);
+		cmdList->IASetIndexBuffer(&IndexBufferView);
+		cmdList->IASetPrimitiveTopology(ri->PrimitiveType);
+
+		// Offset to the CBV in the descriptor heap for this object and for this frame resource.
+		UINT cbvIndex = CurrFrameResourceIndex * (UINT)OpaqueRenderItems.size() + ri->ObjCBIndex;
+		auto cbvHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(CbvHeap->GetGPUDescriptorHandleForHeapStart());
+		cbvHandle.Offset(cbvIndex, CbvUavDescriptorSize);
+
+		cmdList->SetGraphicsRootDescriptorTable(0, cbvHandle);
+
+		cmdList->DrawIndexedInstanced(ri->IndexCount, 1, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
+	}
+}
+
+void BuildConstantBuffers()
+{
+	UINT objCBByteSize = CalcConstantBufferByteSize(sizeof(ObjectConstants));
+
+	UINT objCount = (UINT)OpaqueRenderItems.size();
+
+	// Need a CBV descriptor for each object for each frame resource.
+	for (int frameIndex = 0; frameIndex < NumFrameResources; ++frameIndex)
+	{
+		auto objectCB = FrameResources[frameIndex]->ObjectCB->Resource();
+		for (UINT i = 0; i < objCount; ++i)
+		{
+			D3D12_GPU_VIRTUAL_ADDRESS cbAddress = objectCB->GetGPUVirtualAddress();
+
+			// Offset to the ith object constant buffer in the buffer.
+			cbAddress += i * objCBByteSize;
+
+			// Offset to the object cbv in the descriptor heap.
+			int heapIndex = frameIndex * objCount + i;
+			auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(CbvHeap->GetCPUDescriptorHandleForHeapStart());
+			handle.Offset(heapIndex, CbvUavDescriptorSize);
+
+			D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc;
+			cbvDesc.BufferLocation = cbAddress;
+			cbvDesc.SizeInBytes = objCBByteSize;
+
+			d3dDevice->CreateConstantBufferView(&cbvDesc, handle);
+		}
+	}
+
+	UINT passCBByteSize = CalcConstantBufferByteSize(sizeof(PassConstants));
+
+	// Last three descriptors are the pass CBVs for each frame resource.
+	for (int frameIndex = 0; frameIndex < NumFrameResources; ++frameIndex)
+	{
+		auto passCB = FrameResources[frameIndex]->PassCB->Resource();
+		D3D12_GPU_VIRTUAL_ADDRESS cbAddress = passCB->GetGPUVirtualAddress();
+
+		// Offset to the pass cbv in the descriptor heap.
+		int heapIndex = PassCbvOffset + frameIndex;
+		auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(CbvHeap->GetCPUDescriptorHandleForHeapStart());
+		handle.Offset(heapIndex, CbvUavDescriptorSize);
+
+		D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc;
+		cbvDesc.BufferLocation = cbAddress;
+		cbvDesc.SizeInBytes = passCBByteSize;
+
+		d3dDevice->CreateConstantBufferView(&cbvDesc, handle);
+	}
 }
 void BuildRootSignature()
 {
@@ -887,7 +1033,7 @@ void BuildRootSignature()
 	cbvTable1.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 1);
 	//将表放到根参数数组中
 	slotRootParameter[0].InitAsDescriptorTable(1, &cbvTable0);
-	slotRootParameter[0].InitAsDescriptorTable(1, &cbvTable1);
+	slotRootParameter[1].InitAsDescriptorTable(1, &cbvTable1);
 	// 根签名由一组根参数构成。
 	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(2, slotRootParameter, 0, nullptr,
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
@@ -914,14 +1060,15 @@ void BuildRootSignature()
 }
 void PopulateCommandList()
 {	
+	auto cmdListAlloc = CurrFrameResource->CmdListAlloc;
 	// 只有当相关的命令列表在GPU上完成执行时，才能重置命令列表分配器;
 	// 应用程序应该使用栅栏来确定GPU的执行进度。
-	ThrowIfFailed(commandAllocator->Reset());
+	ThrowIfFailed(cmdListAlloc->Reset());
 
 	// However, when ExecuteCommandList() is called on a particular command 
 	// list, that command list can then be reset at any time and must be before 
 	// re-recording.
-	ThrowIfFailed(commandList->Reset(commandAllocator.Get(), PSO.Get()));
+	ThrowIfFailed(commandList->Reset(cmdListAlloc.Get(), PSO.Get()));
 
 	commandList->RSSetViewports(1, &ScreenViewport);
 	commandList->RSSetScissorRects(1, &ScissorRect);
@@ -954,17 +1101,13 @@ void PopulateCommandList()
 	commandList->SetGraphicsRootSignature(RootSignature.Get());
 
 	//get VertexBufferView and IndexBufferView
-	D3D12_VERTEX_BUFFER_VIEW VertexBufferView = mesh->VertexBufferView();
-	D3D12_INDEX_BUFFER_VIEW IndexBufferView = mesh->IndexBufferView();
-
-	commandList->IASetVertexBuffers(0, 1, &VertexBufferView);
-	commandList->IASetIndexBuffer(&IndexBufferView);
-	commandList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-	commandList->SetGraphicsRootDescriptorTable(0, CbvHeap->GetGPUDescriptorHandleForHeapStart());
+	int passCbvIndex = PassCbvOffset + CurrFrameResourceIndex;
+	auto passCbvHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(CbvHeap->GetGPUDescriptorHandleForHeapStart());
+	passCbvHandle.Offset(passCbvIndex, CbvUavDescriptorSize);
+	commandList->SetGraphicsRootDescriptorTable(1, passCbvHandle);
 
 	//绘制！
-	commandList->DrawIndexedInstanced(IndexCount,1, 0, 0, 0);
+	DrawRenderItems(commandList.Get(), OpaqueRenderItems);
 
 	// Indicate a state transition on the resource usage.
 	auto Barrier1 = CD3DX12_RESOURCE_BARRIER::Transition(

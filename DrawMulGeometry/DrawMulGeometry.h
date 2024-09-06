@@ -41,6 +41,7 @@ int height = 720;
 const int SwapChainBufferCount = 2;
 int currBackBuffer = 0;
 UINT rtvDescriptorSize = 0;
+UINT CbvUavDescriptorSize = 0;
 UINT64 CurrentFence = 0;
 DXGI_FORMAT BackBufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 DXGI_FORMAT DepthStencilFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;

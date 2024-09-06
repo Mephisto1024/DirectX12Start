@@ -4,6 +4,7 @@
 #include <wrl.h>
 #include <d3d12.h>
 #include <memory>
+#include <unordered_map>
 #include<comdef.h>    //_com_error
 #include<string>
 
@@ -49,6 +50,10 @@ public:
         return FunctionName + L" failed in " + Filename + L"; line " + std::to_wstring(LineNumber) + L"; error: " + msg;
     }
 };
+static UINT CalcConstantBufferByteSize(UINT byteSize)
+{
+    return (byteSize + 255) & ~255;
+}
 struct SubmeshGeometry
 {
     UINT IndexCount = 0;
@@ -134,10 +139,12 @@ public:
         if (isConstantBuffer)
             mElementByteSize = CalcConstantBufferByteSize(sizeof(T));
 
+        auto heapprops = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+        auto desc = CD3DX12_RESOURCE_DESC::Buffer(mElementByteSize * elementCount);
         ThrowIfFailed(device->CreateCommittedResource(
-            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+            &heapprops,
             D3D12_HEAP_FLAG_NONE,
-            &CD3DX12_RESOURCE_DESC::Buffer(mElementByteSize * elementCount),
+            &desc,
             D3D12_RESOURCE_STATE_GENERIC_READ,
             nullptr,
             IID_PPV_ARGS(&mUploadBuffer)));
@@ -175,10 +182,7 @@ private:
     UINT mElementByteSize = 0;
     bool mIsConstantBuffer = false;
 };
-static UINT CalcConstantBufferByteSize(UINT byteSize)
-{
-    return (byteSize + 255) & ~255;
-}
+
 /* Math */
 DirectX::XMFLOAT4X4 Identity4x4()
 {

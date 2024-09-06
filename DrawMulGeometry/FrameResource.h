@@ -51,15 +51,15 @@ public:
     // 通过栅栏值，将命令标记到此栅栏点。这让我们可以检查这些帧资源是否仍在被GPU使用。
     UINT64 Fence = 0;
 };
-//FrameResource::FrameResource(ID3D12Device* device, UINT passCount, UINT objectCount)
-//{
-//    ThrowIfFailed(device->CreateCommandAllocator(
-//        D3D12_COMMAND_LIST_TYPE_DIRECT,
-//        IID_PPV_ARGS(CmdListAlloc.GetAddressOf())));
-//
-//    PassCB = std::make_unique<UploadBuffer<PassConstants>>(device, passCount, true);
-//    ObjectCB = std::make_unique<UploadBuffer<ObjectConstants>>(device, objectCount, true);
-//}
+FrameResource::FrameResource(ID3D12Device* device, UINT passCount, UINT objectCount)
+{
+    ThrowIfFailed(device->CreateCommandAllocator(
+        D3D12_COMMAND_LIST_TYPE_DIRECT,
+        IID_PPV_ARGS(CmdListAlloc.GetAddressOf())));
+
+    PassCB = std::make_unique<UploadBuffer<PassConstants>>(device, passCount, true);
+    ObjectCB = std::make_unique<UploadBuffer<ObjectConstants>>(device, objectCount, true);
+}
 
 FrameResource::~FrameResource()
 {
