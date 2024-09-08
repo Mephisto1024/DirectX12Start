@@ -195,6 +195,7 @@ bool InitDirect3D()
 	/*第二步：创建围栏并获取描述符大小*/
 	ThrowIfFailed(d3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence)));
 	rtvDescriptorSize = d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+	CbvSrvUavDescriptorSize = d3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	/*第三步：检测MSAA支持*/
 	/*第四步：创建命令队列，命令列表分配器，命令列表*/
 	CreateCommandObjects();

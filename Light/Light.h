@@ -1,26 +1,28 @@
 #pragma once
+
+#include "resource.h"
+/* C++ Std */
 #include<string>
-#include<comdef.h>
-#include <d3d12.h>	/*包含函数：
-D3D12CreateDevice()
-D3D12GetDebugInterface()
-类：
-ID3D12Device4
-*/
-#include "d3dx12.h"/*包含 创建RT视图所需的句柄 CD3DX12_CPU_DESCRIPTOR_HANDLE */
-#define WIN32_LEAN_AND_MEAN
-#include<windows.h>
-#include"DrawGeometry.h"
-#include <wrl.h>	/*windows Runtime C++ Template Library，方便使用ComPtr*/
-
-#include<dxgi1_6.h>/*包含：
-IDXGIFactory7
-
-*/
-#include<DirectXMath.h> /* 包含 XMFLOAT3 */
-#include <d3dcompiler.h>
-
 #include<unordered_map>
+/* Win32 */
+#include <wrl.h>	/*windows Runtime C++ Template Library，方便使用ComPtr*/
+#include<windows.h>
+#include<comdef.h>
+#define WIN32_LEAN_AND_MEAN
+/* DX12 */
+#include <d3d12.h>	/*包含函数：D3D12CreateDevice()*/
+#include "d3dx12.h"/*包含 创建RT视图所需的句柄 CD3DX12_CPU_DESCRIPTOR_HANDLE */
+#include<dxgi1_6.h>/*包含：IDXGIFactory7*/
+#include<DirectXMath.h> /* 包含 XMFLOAT3 */
+#include"MathHelper.h"
+#include <d3dcompiler.h>
+/* 自己写的 */
+
+/* 链接库 */
+#pragma comment(lib, "d3d12.lib")    //D3D12GetDebugInterface()
+#pragma comment(lib, "dxgi.lib")    //CreateDXGIFactory()
+#pragma comment(lib, "d3dcompiler.lib")
+
 using namespace Microsoft::WRL;
 
 #ifndef ThrowIfFailed
@@ -32,13 +34,52 @@ using namespace Microsoft::WRL;
 }
 #endif
 
+bool InitDirect3D();
+bool Initialize(HINSTANCE instanceHandle, int show);
+int Run();
+void Update();
+void Draw();
+void OnResize();
+void CreateCommandObjects();
+void CreateSwapChain();
+void CreateDescriptorHeaps();
+void FlushCommandQueue();
+
+void BuildConstantBuffers();
+void BuildRootSignature();
+void BuildShadersAndInputLayout();
+void BuildGeometry();
+void BuildPSO();
+
+void PopulateCommandList();
+
+const int SwapChainBufferCount = 2;
+
+D3D_FEATURE_LEVEL FeatureLevel = D3D_FEATURE_LEVEL_12_2;
+ComPtr<IDXGIFactory4> DxgiFactory;
+ComPtr<ID3D12Device6> Device;    //显卡
+ComPtr<ID3D12Fence1> Fence;
+ComPtr<ID3D12CommandAllocator> CommandAllocator;
+ComPtr<ID3D12CommandQueue> CommandQueue;
+ComPtr<ID3D12GraphicsCommandList> CommandList;
+ComPtr<IDXGISwapChain1> SwapChain;
+ComPtr<ID3D12DescriptorHeap> RtvHeap;
+ComPtr<ID3D12DescriptorHeap> DsvHeap;
+ComPtr<ID3D12DescriptorHeap> CbvHeap;
+ComPtr<ID3D12Resource> SwapChainBuffer[SwapChainBufferCount];
+ComPtr<ID3D12Resource> DepthStencilBuffer;
+ComPtr<ID3D12RootSignature> RootSignature = nullptr;
+ComPtr<ID3DBlob> VSByteCode = nullptr;
+ComPtr<ID3DBlob> PSByteCode = nullptr;
+ComPtr<ID3D12PipelineState> PSO = nullptr;
+
 // Set true to use 4X MSAA.   The default is false.
 bool msaaState = false;    // 4X MSAA enabled
 UINT msaaQuality = 0;      // quality level of 4X MSAA
 
 int width = 1280;
 int height = 720;
-const int SwapChainBufferCount = 2;
+
 int currBackBuffer = 0;
 UINT rtvDescriptorSize = 0;
 UINT CbvSrvUavDescriptorSize = 0;
@@ -55,7 +96,7 @@ bool Maximized = false;  // is the application maximized?
 bool Resizing = false;   // are the resize bars being dragged?
 POINT LastMousePos;
 
- std::wstring AnsiToWString(const std::string& str)
+std::wstring AnsiToWString(const std::string& str)
 {
     WCHAR buffer[512];
     MultiByteToWideChar(CP_ACP, 0, str.c_str(), -1, buffer, 512);
@@ -172,7 +213,7 @@ Microsoft::WRL::ComPtr<ID3D12Resource> CreateDefaultBuffer(
     //从通用状态转为用作复制目标
     auto resourceBarrier1 = CD3DX12_RESOURCE_BARRIER::Transition(
         defaultBuffer.Get(),
-        D3D12_RESOURCE_STATE_COMMON, 
+        D3D12_RESOURCE_STATE_COMMON,
         D3D12_RESOURCE_STATE_COPY_DEST);
     cmdList->ResourceBarrier(1, &resourceBarrier1);
 
@@ -197,17 +238,6 @@ Microsoft::WRL::ComPtr<ID3D12Resource> CreateDefaultBuffer(
 
 static UINT CalcConstantBufferByteSize(UINT byteSize)
 {
-    // Constant buffers must be a multiple of the minimum hardware
-    // allocation size (usually 256 bytes).  So round up to nearest
-    // multiple of 256.  We do this by adding 255 and then masking off
-    // the lower 2 bytes which store all bits < 256.
-    // Example: Suppose byteSize = 300.
-    // (300 + 255) & ~255
-    // 555 & ~255
-    // 0x022B & ~0x00ff
-    // 0x022B & 0xff00
-    // 0x0200
-    // 512
     return (byteSize + 255) & ~255;
 }
 
@@ -235,24 +265,4 @@ ComPtr<ID3DBlob> CompileShader(
     ThrowIfFailed(hr);
 
     return byteCode;
-}
-
-/* Math */
-const float Pi = 3.1415926535f;
-
-DirectX::XMFLOAT4X4 Identity4x4()
-{
-    static DirectX::XMFLOAT4X4 I(
-        1.0f, 0.0f, 0.0f, 0.0f,
-        0.0f, 1.0f, 0.0f, 0.0f,
-        0.0f, 0.0f, 1.0f, 0.0f,
-        0.0f, 0.0f, 0.0f, 1.0f);
-
-    return I;
-}
-
-template<typename T>
-static T Clamp(const T& x, const T& low, const T& high)
-{
-    return x < low ? low : (x > high ? high : x);
 }
