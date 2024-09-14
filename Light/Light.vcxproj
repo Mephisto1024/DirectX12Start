@@ -131,8 +131,10 @@
     <ClInclude Include="framework.h" />
     <ClInclude Include="Light.h" />
     <ClInclude Include="MathHelper.h" />
+    <ClInclude Include="MfstUtil.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="targetver.h" />
+    <ClInclude Include="UploadBuffer.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Light.cpp" />

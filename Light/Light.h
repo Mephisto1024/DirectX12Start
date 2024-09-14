@@ -3,6 +3,7 @@
 #include "resource.h"
 /* C++ Std */
 #include<string>
+#include<memory>
 #include<unordered_map>
 /* Win32 */
 #include <wrl.h>	/*windows Runtime C++ Template Library，方便使用ComPtr*/
@@ -15,9 +16,10 @@
 #include<dxgi1_6.h>/*包含：IDXGIFactory7*/
 #include<DirectXMath.h> /* 包含 XMFLOAT3 */
 #include"MathHelper.h"
+#include"UploadBuffer.h"
 #include <d3dcompiler.h>
 /* 自己写的 */
-
+#include"MfstUtil.h"
 /* 链接库 */
 #pragma comment(lib, "d3d12.lib")    //D3D12GetDebugInterface()
 #pragma comment(lib, "dxgi.lib")    //CreateDXGIFactory()
@@ -40,11 +42,14 @@ int Run();
 void Update();
 void Draw();
 void OnResize();
+void CreateDevice();
 void CreateCommandObjects();
 void CreateSwapChain();
 void CreateDescriptorHeaps();
+void CreateDescriptors();
 void FlushCommandQueue();
 
+void BuildDescriptorHeaps();
 void BuildConstantBuffers();
 void BuildRootSignature();
 void BuildShadersAndInputLayout();
@@ -54,7 +59,7 @@ void BuildPSO();
 void PopulateCommandList();
 
 const int SwapChainBufferCount = 2;
-
+/* COM对象 */
 D3D_FEATURE_LEVEL FeatureLevel = D3D_FEATURE_LEVEL_12_2;
 ComPtr<IDXGIFactory4> DxgiFactory;
 ComPtr<ID3D12Device6> Device;    //显卡
@@ -72,16 +77,15 @@ ComPtr<ID3D12RootSignature> RootSignature = nullptr;
 ComPtr<ID3DBlob> VSByteCode = nullptr;
 ComPtr<ID3DBlob> PSByteCode = nullptr;
 ComPtr<ID3D12PipelineState> PSO = nullptr;
-
+std::unique_ptr<UploadBuffer<Mfst::ObjectConstants>> ObjectCB = nullptr;;
 // Set true to use 4X MSAA.   The default is false.
 bool msaaState = false;    // 4X MSAA enabled
 UINT msaaQuality = 0;      // quality level of 4X MSAA
 
-int width = 1280;
-int height = 720;
+
 
 int currBackBuffer = 0;
-UINT rtvDescriptorSize = 0;
+UINT RtvDescriptorSize = 0;
 UINT CbvSrvUavDescriptorSize = 0;
 UINT64 CurrentFence = 0;
 DXGI_FORMAT BackBufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -90,6 +94,8 @@ DXGI_FORMAT DepthStencilFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
 D3D12_VIEWPORT ScreenViewport;
 D3D12_RECT ScissorRect;
 /* Win32 */
+int width = 1280;
+int height = 720;
 bool Paused = false;
 bool Minimized = false;  // is the application minimized?
 bool Maximized = false;  // is the application maximized?
@@ -236,10 +242,7 @@ Microsoft::WRL::ComPtr<ID3D12Resource> CreateDefaultBuffer(
     return defaultBuffer;
 }
 
-static UINT CalcConstantBufferByteSize(UINT byteSize)
-{
-    return (byteSize + 255) & ~255;
-}
+
 
 ComPtr<ID3DBlob> CompileShader(
     const std::wstring& filename,
