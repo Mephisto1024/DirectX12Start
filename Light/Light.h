@@ -82,8 +82,6 @@ std::unique_ptr<UploadBuffer<Mfst::ObjectConstants>> ObjectCB = nullptr;;
 bool msaaState = false;    // 4X MSAA enabled
 UINT msaaQuality = 0;      // quality level of 4X MSAA
 
-
-
 int currBackBuffer = 0;
 UINT RtvDescriptorSize = 0;
 UINT CbvSrvUavDescriptorSize = 0;
@@ -101,7 +99,8 @@ bool Minimized = false;  // is the application minimized?
 bool Maximized = false;  // is the application maximized?
 bool Resizing = false;   // are the resize bars being dragged?
 POINT LastMousePos;
-
+/* Matrix */
+DirectX::XMFLOAT4X4 MatProj;
 std::wstring AnsiToWString(const std::string& str)
 {
     WCHAR buffer[512];

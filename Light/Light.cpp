@@ -281,7 +281,7 @@ void OnResize()
     //这里解决了拉伸的问题
     float AspectRatio = static_cast<float>(width) / height;
     DirectX::XMMATRIX P = DirectX::XMMatrixPerspectiveFovLH(DirectX::XM_PI / 4.0f, AspectRatio, 1.0f, 1000.0f);
-    XMStoreFloat4x4(&matProj, P);
+    XMStoreFloat4x4(&MatProj, P);
 }
 void CreateDevice()
 {
@@ -468,6 +468,7 @@ void BuildConstantBuffers()
 }
 void BuildRootSignature()
 {
+
 }
 void BuildShadersAndInputLayout()
 {
